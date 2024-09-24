@@ -73,7 +73,7 @@ function(build_exec)
   set(oneValueArgs EXECNAME EXECNAME_PREFIX EXECUTABLE_DIRECTORY_PATH
                    INSTALL_DIRECTORY_PATH
   )
-  set(multiValueArgs SOURCE_FILES HEADER_FILES LIBRARIES_TO_LINK DEFINITIONS)
+  set(multiValueArgs SOURCE_FILES HEADER_FILES DIRECTORY_PATHS LIBRARIES_TO_LINK DEFINITIONS)
   cmake_parse_arguments(
     "BEXEC" "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN}
   )
@@ -101,6 +101,10 @@ function(build_exec)
       ${BEXEC_EXECNAME_PREFIX}${BEXEC_EXECNAME} REUSE_FROM stdlib_pch_exec
     )
   endif()
+
+  target_include_directories(
+    ${BEXEC_EXECNAME_PREFIX}${BEXEC_EXECNAME} PRIVATE ${BEXEC_DIRECTORY_PATHS}
+  )
 
   if(${NS3_STATIC} AND (NOT BEXEC_STANDALONE))
     target_link_libraries(
