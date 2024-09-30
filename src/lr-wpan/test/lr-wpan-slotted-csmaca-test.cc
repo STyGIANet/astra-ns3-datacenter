@@ -29,6 +29,7 @@
 #include <ns3/single-model-spectrum-channel.h>
 
 using namespace ns3;
+using namespace ns3::lrwpan;
 
 NS_LOG_COMPONENT_DEFINE("lr-wpan-slotted-csma-test");
 
@@ -125,7 +126,7 @@ LrWpanSlottedCsmacaTestCase::TransEndIndication(LrWpanSlottedCsmacaTestCase* tes
 {
     // In the case of transmissions with the acknowledgment flag activated, the transmission is only
     // successful if the acknowledgment was received.
-    if (params.m_status == LrWpanMacStatus::SUCCESS)
+    if (params.m_status == MacStatus::SUCCESS)
     {
         NS_LOG_UNCOND(Simulator::Now().GetSeconds() << "s Transmission successfully sent");
         testcase->m_sentTime = Simulator::Now();
