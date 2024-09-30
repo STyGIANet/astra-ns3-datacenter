@@ -490,8 +490,10 @@ class Callback : public CallbackBase
      * of the first argument is a class derived from CallbackBase (i.e., a Callback).
      */
     template <typename T,
-              std::enable_if_t<!std::is_base_of_v<CallbackBase, T>, int> = 0,
-              typename... BArgs>
+              typename... BArgs,
+              std::enable_if_t<!std::is_base_of_v<CallbackBase, T> &&
+                                   std::is_invocable_r_v<R, T, BArgs..., UArgs...>,
+                               int> = 0>
     Callback(T func, BArgs... bargs)
     {
         // store the function in a std::function object
@@ -648,18 +650,12 @@ class Callback : public CallbackBase
      */
     bool DoCheckType(Ptr<const CallbackImplBase> other) const
     {
-        if (other && dynamic_cast<const CallbackImpl<R, UArgs...>*>(PeekPointer(other)) != nullptr)
+        if (!other)
         {
             return true;
         }
-        else if (!other)
-        {
-            return true;
-        }
-        else
-        {
-            return false;
-        }
+
+        return (dynamic_cast<const CallbackImpl<R, UArgs...>*>(PeekPointer(other)) != nullptr);
     }
 };
 
