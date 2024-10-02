@@ -556,11 +556,26 @@ void SetConfig() {
   }
 }
 
-void SetupNetwork(void (*qp_finish)(FILE *, Ptr<RdmaQueuePair>)) {
+bool SetupNetwork(void (*qp_finish)(FILE *, Ptr<RdmaQueuePair>)) {
 
   topof.open(topology_file.c_str());
+  if (!topof.is_open()) {
+    std::cerr << "Error: cannot open topology file: " << topology_file << std::endl;
+    return false;
+  }
+
   flowf.open(flow_file.c_str());
+  if (!flowf.is_open()) {
+    std::cerr << "Error: cannot open flow file: " << flow_file << std::endl;
+    return false;
+  }
+
   tracef.open(trace_file.c_str());
+  if (!tracef.is_open()) {
+    std::cerr << "Error: cannot open trace file: " << trace_file << std::endl;
+    return false;
+  }
+
   uint32_t node_num, switch_num, link_num, trace_num;
   topof >> node_num >> switch_num >> link_num;
   flowf >> flow_num;
@@ -895,4 +910,6 @@ void SetupNetwork(void (*qp_finish)(FILE *, Ptr<RdmaQueuePair>)) {
   FILE *qlen_output = fopen(qlen_mon_file.c_str(), "w");
   Simulator::Schedule(NanoSeconds(qlen_mon_start), &monitor_buffer, qlen_output,
                       &n);
+
+  return true;
 }
