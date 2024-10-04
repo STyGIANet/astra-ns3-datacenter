@@ -36,6 +36,8 @@ SeqTsHeader::SeqTsHeader()
       m_ts(Simulator::Now().GetTimeStep())
 {
     NS_LOG_FUNCTION(this);
+    if (IntHeader::mode == 1)
+        ih.ts = Simulator::Now().GetTimeStep();
 }
 
 void
