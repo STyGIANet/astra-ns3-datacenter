@@ -46,8 +46,7 @@ uint32_t cc_mode = 1;
 bool enable_qcn = true, use_dynamic_pfc_threshold = true;
 uint32_t packet_payload_size = 1000, l2_chunk_size = 0, l2_ack_interval = 0;
 double pause_time = 5, simulator_stop_time = 3.01;
-std::string data_rate, link_delay, topology_file, flow_file, trace_file,
-    trace_output_file;
+std::string topology_file, flow_file, trace_file, trace_output_file;
 std::string fct_output_file = "fct.txt";
 std::string pfc_output_file = "pfc.txt";
 
@@ -353,14 +352,6 @@ bool ReadConf(string network_configuration) {
       double v;
       conf >> v;
       pause_time = v;
-    } else if (key.compare("DATA_RATE") == 0) {
-      std::string v;
-      conf >> v;
-      data_rate = v;
-    } else if (key.compare("LINK_DELAY") == 0) {
-      std::string v;
-      conf >> v;
-      link_delay = v;
     } else if (key.compare("PACKET_PAYLOAD_SIZE") == 0) {
       uint32_t v;
       conf >> v;
