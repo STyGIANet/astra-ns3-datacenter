@@ -202,8 +202,10 @@ void monitor_buffer(FILE *qlen_output, NodeContainer *n) {
     }
   }
   fflush(qlen_output);
-  Simulator::Schedule(NanoSeconds(qlen_mon_interval), &monitor_buffer,
-                      qlen_output, n);
+  if (!Simulator::IsFinished()) {
+    Simulator::Schedule(NanoSeconds(qlen_mon_interval), &monitor_buffer,
+                        qlen_output, n);
+  }
 }
 
 void CalculateRoute(Ptr<Node> host) {
@@ -555,11 +557,11 @@ bool SetupNetwork(void (*qp_finish)(FILE *, Ptr<RdmaQueuePair>)) {
     return false;
   }
 
-  flowf.open(flow_file.c_str());
-  if (!flowf.is_open()) {
-    std::cerr << "Error: cannot open flow file: " << flow_file << std::endl;
-    return false;
-  }
+  // flowf.open(flow_file.c_str());
+  // if (!flowf.is_open()) {
+  //   std::cerr << "Error: cannot open flow file: " << flow_file << std::endl;
+  //   return false;
+  // }
 
   tracef.open(trace_file.c_str());
   if (!tracef.is_open()) {
@@ -569,7 +571,7 @@ bool SetupNetwork(void (*qp_finish)(FILE *, Ptr<RdmaQueuePair>)) {
 
   uint32_t node_num, switch_num, link_num, trace_num;
   topof >> node_num >> switch_num >> link_num;
-  flowf >> flow_num;
+  // flowf >> flow_num;
   tracef >> trace_num;
 
   std::vector<uint32_t> node_type(node_num, 0);
