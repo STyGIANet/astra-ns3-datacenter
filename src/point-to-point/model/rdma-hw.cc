@@ -493,31 +493,21 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 	else {
 		if (!m_backto0){
 			if (m_reps || m_endHostSpray){
-				auto x = qp->pktsInflight.begin();
-				// If this ACK Seq acknowledges the first packet in the retransmit queue,
-				// then we try to remove all the consecutive packets that have been acknowledged so far
-				// in the retransmit queue.
-				if (x != qp->pktsInflight.end() && x->first == seq){
-					std::get<1>(x->second) = true;
-					for (auto it = qp->pktsInflight.begin(); it != qp->pktsInflight.end();){
-						if (std::get<1>(it->second) == true){
-							qp->Acknowledge(it->first);
-							std::get<2>(it->second).Cancel(); // cancel the timeout;
-							it = qp->pktsInflight.erase(it);
-						}
-						else{
-							break;
-						}
-					}
+				auto it = qp->pktsInflight.find(seq);
+				if (it != qp->pktsInflight.end()){
+					std::get<1>(it->second) = true; // just indicate that the packet has been ACKed
 				}
-				else{
-					auto it = qp->pktsInflight.find(seq);
-					if (it != qp->pktsInflight.end()){
-						std::get<1>(it->second) = true; // just indicate that the packet has been ACKed
+				// Try to remove all the consecutive packets that have been acknowledged so far
+				// in the retransmit queue.
+				for (auto it = qp->pktsInflight.begin(); it != qp->pktsInflight.end();){
+					if (std::get<1>(it->second) == true){
+						qp->Acknowledge(it->first);
+						std::get<2>(it->second).Remove(); // cancel the timeout;
+						it = qp->pktsInflight.erase(it);
 					}
-					// else{
-					// 	NS_LOG_INFO("Received duplicate ACK");
-					// }
+					else{
+						break;
+					}
 				}
 			}
 			else{
@@ -531,11 +521,14 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 			if (qp->timeout.IsRunning()){
 				qp->timeout.Cancel();
 			}
-			// Remove any duplicate packets left over in the retransmit queue.
+			// Remove any duplicate packets left over in the inflight queue.
 			// Cancel all associated timers
 			for (auto it = qp->pktsInflight.begin(); it != qp->pktsInflight.end();){
-				std::get<2>(it->second).Cancel(); // cancel the timeout;
+				std::get<2>(it->second).Remove(); // cancel the timeout;
 				it = qp->pktsInflight.erase(it);
+			}
+			for (auto it = qp->retransmitQueue.begin(); it != qp->retransmitQueue.end();){
+				it = qp->retransmitQueue.erase(it);
 			}
 			QpComplete(qp);
 		}
@@ -815,7 +808,7 @@ Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
 		}
 		else{
 			// std::cout << "retransmit" << std::endl;
-			std::get<2>(qp->pktsInflight[seqNum + payload_size]).Cancel(); // cancel the timeout
+			std::get<2>(qp->pktsInflight[seqNum + payload_size]).Remove(); // cancel the timeout
 			uint32_t backoff_exp = std::get<3>(qp->pktsInflight[seqNum + payload_size]);
 			std::get<3>(qp->pktsInflight[seqNum + payload_size]) = backoff_exp << 1; // exponential backoff
 			EventId timeoutEvent = Simulator::Schedule(NanoSeconds(backoff_exp*rto), &RdmaHw::RetransmitPacket, this, qp, seqNum + payload_size);
@@ -829,10 +822,10 @@ Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
 
 // STyGIANet
 void RdmaHw::RetransmitPacket(Ptr<RdmaQueuePair> qp, uint32_t expectedAckSeq){
-	std::cout << "retransmit" << std::endl;
+	// std::cout << "retransmit" << std::endl;
 	// expectedAckSeq - payloadsize gives the sequence number from the sender perspective.
 	uint32_t payload_size = std::get<0>(qp->pktsInflight[expectedAckSeq]);
-	std::get<2>(qp->pktsInflight[expectedAckSeq]).Cancel();
+	std::get<2>(qp->pktsInflight[expectedAckSeq]).Remove();
 	uint32_t seqNum = expectedAckSeq - payload_size;
 	qp->retransmitQueue.push_back(std::make_pair(seqNum, payload_size)); // we don't care if the same packet exists in the retransmit queue already
 	// std::cout << "Retransmit " << " node " << m_node->GetId() << " srcIp " << qp->sip.Get()
