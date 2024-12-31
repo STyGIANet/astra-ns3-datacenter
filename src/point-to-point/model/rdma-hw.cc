@@ -178,7 +178,33 @@ TypeId RdmaHw::GetTypeId (void)
 				"The number of pause times to simulate PFC pause due to PCIe",
 				UintegerValue(0),
 				MakeUintegerAccessor(&RdmaHw::m_total_pause_times),
-				MakeUintegerChecker<uint64_t>());
+				MakeUintegerChecker<uint64_t>())
+		.AddAttribute("sourceRouting",
+			"use source routing",
+			BooleanValue(false),
+			MakeBooleanAccessor(&RdmaHw::m_sourceRouting),
+			MakeBooleanChecker())
+		.AddAttribute("endHostSpray",
+			"use source routing",
+			BooleanValue(false),
+			MakeBooleanAccessor(&RdmaHw::m_endHostSpray),
+			MakeBooleanChecker())
+		.AddAttribute("reps",
+			"use reps load balancing",
+			BooleanValue(false),
+			MakeBooleanAccessor(&RdmaHw::m_reps),
+			MakeBooleanChecker())
+		.AddAttribute("rto","retransmission timeout",
+			UintegerValue(100000), 
+			MakeUintegerAccessor(&RdmaHw::rto), 
+			MakeUintegerChecker<uint64_t>())
+		.AddTraceSource ("linkFailure", "Node detected a failure",
+				MakeTraceSourceAccessor (&RdmaHw::m_notifyLinkFailure),
+				"ns3::Packet::TracedCallback")
+		.AddTraceSource ("resetLinkFailure", 
+			"Node thinks that a failure is recovered and wants to preemptively notify the other side",
+				MakeTraceSourceAccessor (&RdmaHw::m_notifyResetLinkFailure),
+				"ns3::Packet::TracedCallback")
 		;
 	return tid;
 }
@@ -352,35 +378,48 @@ int RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader &ch){
 
 	int x = ReceiverCheckSeq(ch.udp.seq, rxQp, payload_size);
 
-	if(x !=1 && x!=2){
-		std::cout << Simulator::Now().GetNanoSeconds() << " Rx ";
-		Ipv4Address(ch.sip).Print(std::cout);
-		std::cout << " " << ch.udp.sport << " ";
-		Ipv4Address(ch.dip).Print(std::cout);
-		std::cout << " " << ch.udp.dport << " " << ch.udp.seq << " " << ch.udp.pg << " " << p->GetSize() << " " << payload_size;
-		std::cout << " ReceiverCheckSeq " << x << std::endl;
-	}
+	// if(x !=1 && x!=2){
+	// 	std::cout << Simulator::Now().GetNanoSeconds() << " Rx ";
+	// 	Ipv4Address(ch.sip).Print(std::cout);
+	// 	std::cout << " " << ch.udp.sport << " ";
+	// 	Ipv4Address(ch.dip).Print(std::cout);
+	// 	std::cout << " " << ch.udp.dport << " " << ch.udp.seq << " " << ch.udp.pg << " " << p->GetSize() << " " << payload_size;
+	// 	std::cout << " ReceiverCheckSeq " << x << std::endl;
+	// }
 
-	if (x == 1 || x == 2){ //generate ACK or NACK
+	if (x == 1 || x == 2  || x==8){ //generate ACK or NACK
 		qbbHeader seqh;
-		seqh.SetSeq(rxQp->ReceiverNextExpectedSeq);
 		seqh.SetPG(ch.udp.pg);
 		seqh.SetSport(ch.udp.dport);
 		seqh.SetDport(ch.udp.sport);
 		seqh.SetIntHeader(ch.udp.ih);
 		if (ecnbits)
 			seqh.SetCnp();
-
+		if (x == 8){
+			seqh.SetSeq(ch.udp.seq + payload_size);
+		}
+		else{
+			seqh.SetSeq(rxQp->ReceiverNextExpectedSeq);
+		}
 		Ptr<Packet> newp = Create<Packet>(std::max(60-14-20-(int)seqh.GetSerializedSize(), 0));
 		newp->AddHeader(seqh);
 
 		Ipv4Header head;	// Prepare IPv4 header
 		head.SetDestination(Ipv4Address(ch.sip));
 		head.SetSource(Ipv4Address(ch.dip));
-		head.SetProtocol(x == 1 ? 0xFC : 0xFD); //ack=0xFC nack=0xFD
+		head.SetProtocol(x != 2 ? 0xFC : 0xFD); //ack=0xFC nack=0xFD
 		head.SetTtl(64);
 		head.SetPayloadSize(newp->GetSize());
-		head.SetIdentification(rxQp->m_ipid++);
+		if (m_reps){
+			Ptr<Packet> cp = p->Copy();
+			PppHeader ppph; cp->RemoveHeader(ppph);
+			Ipv4Header ihh; cp->RemoveHeader(ihh);
+			uint32_t entropy = ihh.GetIdentification();
+			head.SetIdentification(entropy);
+		}
+		else{
+			head.SetIdentification(rxQp->m_ipid++);
+		}
 
 		newp->AddHeader(head);
 		AddHeader(newp, 0x800);	// Attach PPP header
@@ -443,6 +482,7 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 	int i;
 	Ptr<RdmaQueuePair> qp = GetQp(ch.sip, port, qIndex);
 	if (!qp){
+		std::cout << "ERROR: " << "node:" << m_node->GetId() << ' ' << (ch.l3Prot == 0xFC ? "ACK" : "NACK") << " NIC cannot find the flow\n";
 		return 0;
 	}
 
@@ -452,12 +492,51 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 		std::cout << "ERROR: shouldn't receive ack\n";
 	else {
 		if (!m_backto0){
-			qp->Acknowledge(seq);
+			if (m_reps || m_endHostSpray){
+				auto x = qp->pktsInflight.begin();
+				// If this ACK Seq acknowledges the first packet in the retransmit queue,
+				// then we try to remove all the consecutive packets that have been acknowledged so far
+				// in the retransmit queue.
+				if (x != qp->pktsInflight.end() && x->first == seq){
+					std::get<1>(x->second) = true;
+					for (auto it = qp->pktsInflight.begin(); it != qp->pktsInflight.end();){
+						if (std::get<1>(it->second) == true){
+							qp->Acknowledge(it->first);
+							std::get<2>(it->second).Cancel(); // cancel the timeout;
+							it = qp->pktsInflight.erase(it);
+						}
+						else{
+							break;
+						}
+					}
+				}
+				else{
+					auto it = qp->pktsInflight.find(seq);
+					if (it != qp->pktsInflight.end()){
+						std::get<1>(it->second) = true; // just indicate that the packet has been ACKed
+					}
+					// else{
+					// 	NS_LOG_INFO("Received duplicate ACK");
+					// }
+				}
+			}
+			else{
+				qp->Acknowledge(seq);
+			}
 		}else {
 			uint32_t goback_seq = seq / m_chunk * m_chunk;
 			qp->Acknowledge(goback_seq);
 		}
 		if (qp->IsFinished()){
+			if (qp->timeout.IsRunning()){
+				qp->timeout.Cancel();
+			}
+			// Remove any duplicate packets left over in the retransmit queue.
+			// Cancel all associated timers
+			for (auto it = qp->pktsInflight.begin(); it != qp->pktsInflight.end();){
+				std::get<2>(it->second).Cancel(); // cancel the timeout;
+				it = qp->pktsInflight.erase(it);
+			}
 			QpComplete(qp);
 		}
 	}
@@ -468,6 +547,21 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 	if (cnp){
 		if (m_cc_mode == 1){ // mlx version
 			cnp_received_mlx(qp);
+		}
+	}
+
+	if (m_reps){
+		Ptr<Packet> cp = p->Copy();
+		PppHeader ppph; cp->RemoveHeader(ppph);
+		Ipv4Header ihh; cp->RemoveHeader(ihh);
+		uint32_t entropy = ihh.GetIdentification();
+		if (cnp){
+			if (entropy == qp->cachedEntropy.Get()){
+				qp->cachedEntropy.Remove();
+			}
+		}
+		else{
+			qp->cachedEntropy.Insert(entropy);
 		}
 	}
 
@@ -501,8 +595,27 @@ int RdmaHw::Receive(Ptr<Packet> p, CustomHeader &ch){
 
 int RdmaHw::ReceiverCheckSeq(uint32_t seq, Ptr<RdmaRxQueuePair> q, uint32_t size){
 	uint32_t expected = q->ReceiverNextExpectedSeq;
+
+	auto x = q->reOrderBuffer.begin();
+	if (x != q->reOrderBuffer.end() && (x->first == expected || seq == expected)) {
+		for (auto it = q->reOrderBuffer.begin(); it != q->reOrderBuffer.end();){
+			if (it->first == q->ReceiverNextExpectedSeq){
+				q->ReceiverNextExpectedSeq += it->second;
+				it = q->reOrderBuffer.erase(it);
+				q->m_lastNACK = 0; // reset NACK interval
+				// std::cout << "restting NACK interval" << std::endl;
+			}
+			else{
+				break;
+			}
+		}
+	}
+
 	if (seq == expected){
-		q->ReceiverNextExpectedSeq = expected + size;
+		if (q->ReceiverNextExpectedSeq == expected){ 
+			// reorder buffer did not change anything. So, we are ok to increment as usual.
+			q->ReceiverNextExpectedSeq = expected + size;
+		}
 		if (q->ReceiverNextExpectedSeq >= q->m_milestone_rx){
 			q->m_milestone_rx += m_ack_interval;
 			return 1; //Generate ACK
@@ -513,7 +626,22 @@ int RdmaHw::ReceiverCheckSeq(uint32_t seq, Ptr<RdmaRxQueuePair> q, uint32_t size
 		}
 	} else if (seq > expected) {
 		// Generate NACK
-		if (Simulator::Now() >= q->m_nackTimer || q->m_lastNACK != expected){
+		if (m_reps || m_endHostSpray){
+			q->reOrderBuffer[seq] = size;
+
+			if (Simulator::Now() >= q->m_nackTimer && (q->m_lastNACK!=0 && q->m_lastNACK!= expected)){
+				q->m_nackTimer = Simulator::Now() + MicroSeconds(m_nack_interval);
+				q->m_lastNACK = expected;
+				// std::cout << "NACK Triggered" << std::endl;
+				return 2; // Send NACK
+			}
+			else if (q->m_lastNACK==0){
+				q->m_nackTimer = Simulator::Now() + MicroSeconds(m_nack_interval);
+				q->m_lastNACK = expected;
+			}
+			return 8; //Ack just for corresponding seq
+		}
+		else if (Simulator::Now() >= q->m_nackTimer || q->m_lastNACK != expected){
 			q->m_nackTimer = Simulator::Now() + MicroSeconds(m_nack_interval);
 			q->m_lastNACK = expected;
 			if (m_backto0){
@@ -543,6 +671,15 @@ uint16_t RdmaHw::EtherToPpp (uint16_t proto){
 
 void RdmaHw::RecoverQueue(Ptr<RdmaQueuePair> qp){
 	qp->snd_nxt = qp->snd_una;
+	// STyGIANet
+	// Remove sender's inflight buffer and all the timers
+	for (auto it = qp->pktsInflight.begin(); it != qp->pktsInflight.end();){
+		std::get<2>(it->second).Cancel(); // cancel the timeout;
+		it = qp->pktsInflight.erase(it);
+	}
+	// This is used for Ethereal, and for any application-level load balancing
+	// Here, we assume that dport is being used for source routing to indicate uplink.
+	m_notifyLinkFailure(qp->dport, qp->m_dest);
 }
 
 void RdmaHw::QpComplete(Ptr<RdmaQueuePair> qp){
@@ -595,13 +732,29 @@ void RdmaHw::RedistributeQp(){
 }
 
 Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
-	uint32_t payload_size = qp->GetBytesLeft();
-	if (m_mtu < payload_size)
-		payload_size = m_mtu;
+	// STyGIANet
+	// For reordering buffer and retransmissions
+	uint32_t seqNum = 0;
+	uint32_t payload_size = 0;
+	bool retransmit = false;
+	if (!qp->retransmitQueue.empty()){
+		seqNum = qp->retransmitQueue[0].first;
+		payload_size = qp->retransmitQueue[0].second;
+		qp->retransmitQueue.erase(qp->retransmitQueue.begin());
+		retransmit = true;
+	}
+	else{
+		seqNum = qp->snd_nxt;
+		payload_size = qp->GetBytesLeft();
+		if (m_mtu < payload_size)
+			payload_size = m_mtu;
+		retransmit = false; 
+	}
+
 	Ptr<Packet> p = Create<Packet> (payload_size);
 	// add SeqTsHeader
 	SeqTsHeader seqTs;
-	seqTs.SetSeq (qp->snd_nxt);
+	seqTs.SetSeq (seqNum);
 	seqTs.SetPG (qp->m_pg);
 	p->AddHeader (seqTs);
 	// add udp header
@@ -617,7 +770,32 @@ Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
 	ipHeader.SetPayloadSize (p->GetSize());
 	ipHeader.SetTtl (64);
 	ipHeader.SetTos (0);
-	ipHeader.SetIdentification (qp->m_ipid);
+	if (m_sourceRouting){
+		ipHeader.SetIdentification (qp->dport);
+	}
+	else if (m_endHostSpray){
+		ipHeader.SetIdentification (qp->m_ipid);
+	}
+	else if (m_reps){
+		uint32_t sentBytes = qp->m_size - qp->GetBytesLeft();
+		uint32_t nic_idx = GetNicIdxOfQp(qp);
+		DataRate m_bps = m_nic[nic_idx].dev->GetDataRate();
+		double bdp = m_bps.GetBitRate() * 1 * (qp->m_baseRtt * 1e-9) / 8;
+		if ((sentBytes < bdp && !qp->allentropiesTried) || qp->cachedEntropy.Get() == -1){
+			ipHeader.SetIdentification((qp->nextEntropy)%qp->maxEntropies);
+			qp->nextEntropy++;
+			if (qp->nextEntropy == qp->maxEntropies){
+				qp->allentropiesTried = true;
+				qp->nextEntropy = 0;
+			}
+		}
+		else{
+			ipHeader.SetIdentification(qp->cachedEntropy.Get());
+		}
+	}
+	else{
+		ipHeader.SetIdentification (qp->m_ipid);
+	}
 	p->AddHeader(ipHeader);
 	// add ppp header
 	PppHeader ppp;
@@ -625,11 +803,54 @@ Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
 	p->AddHeader (ppp);
 
 	// update state
-	qp->snd_nxt += payload_size;
+	if(!retransmit) // do not increment snd_nxt for retransmissions
+		qp->snd_nxt += payload_size;
 	qp->m_ipid++;
+
+	// STyGIANet
+	if (m_reps || m_endHostSpray){
+		if (!retransmit){
+			EventId timeoutEvent = Simulator::Schedule(NanoSeconds(rto), &RdmaHw::RetransmitPacket, this, qp, seqNum + payload_size);
+			qp->pktsInflight[seqNum + payload_size] = std::make_tuple(payload_size,false, timeoutEvent, 1);
+		}
+		else{
+			// std::cout << "retransmit" << std::endl;
+			std::get<2>(qp->pktsInflight[seqNum + payload_size]).Cancel(); // cancel the timeout
+			uint32_t backoff_exp = std::get<3>(qp->pktsInflight[seqNum + payload_size]);
+			std::get<3>(qp->pktsInflight[seqNum + payload_size]) = backoff_exp << 1; // exponential backoff
+			EventId timeoutEvent = Simulator::Schedule(NanoSeconds(backoff_exp*rto), &RdmaHw::RetransmitPacket, this, qp, seqNum + payload_size);
+			std::get<2>(qp->pktsInflight[seqNum + payload_size]) = timeoutEvent; // update the timeout event
+		}
+	}
 
 	// return
 	return p;
+}
+
+// STyGIANet
+void RdmaHw::RetransmitPacket(Ptr<RdmaQueuePair> qp, uint32_t expectedAckSeq){
+	std::cout << "retransmit" << std::endl;
+	// expectedAckSeq - payloadsize gives the sequence number from the sender perspective.
+	uint32_t payload_size = std::get<0>(qp->pktsInflight[expectedAckSeq]);
+	std::get<2>(qp->pktsInflight[expectedAckSeq]).Cancel();
+	uint32_t seqNum = expectedAckSeq - payload_size;
+	qp->retransmitQueue.push_back(std::make_pair(seqNum, payload_size)); // we don't care if the same packet exists in the retransmit queue already
+	// std::cout << "Retransmit " << " node " << m_node->GetId() << " srcIp " << qp->sip.Get()
+				// << " dstIp " << qp->dip.Get() << " srcPort " << qp->sport << " dstPort " <<  qp->dport << std::endl;
+
+	if (m_reps){
+		// Time occured.
+		// Remove the oldest cached entropy
+		qp->cachedEntropy.Remove();
+	}
+	else if (m_sourceRouting){
+		// STyGIANet
+		// This is used for Ethereal, and for any application-level load balancing
+		// Here, we assume that dport is being used for source routing to indicate uplink.
+		m_notifyLinkFailure(qp->dport, qp->m_dest);
+	}
+
+	return;
 }
 
 void RdmaHw::PktSent(Ptr<RdmaQueuePair> qp, Ptr<Packet> pkt, Time interframeGap){

@@ -40,6 +40,21 @@ TypeId SwitchNode::GetTypeId (void)
 			UintegerValue(9000),
 			MakeUintegerAccessor(&SwitchNode::m_maxRtt),
 			MakeUintegerChecker<uint32_t>())
+	.AddAttribute("sourceRouting",
+			"use source routing",
+			BooleanValue(false),
+			MakeBooleanAccessor(&SwitchNode::m_sourceRouting),
+			MakeBooleanChecker())
+	.AddAttribute("endHostSpray",
+			"use source routing",
+			BooleanValue(false),
+			MakeBooleanAccessor(&SwitchNode::m_endHostSpray),
+			MakeBooleanChecker())
+	.AddAttribute("reps",
+			"use reps load balancing",
+			BooleanValue(false),
+			MakeBooleanAccessor(&SwitchNode::m_reps),
+			MakeBooleanChecker())
   ;
   return tid;
 }
@@ -60,7 +75,7 @@ SwitchNode::SwitchNode(){
 		m_u[i] = 0;
 }
 
-int SwitchNode::GetOutDev(Ptr<const Packet> p, CustomHeader &ch){
+int SwitchNode::GetOutDev(Ptr<Packet> p, CustomHeader &ch){
 	// look up entries
 	auto entry = m_rtTable.find(ch.dip);
 
@@ -86,6 +101,66 @@ int SwitchNode::GetOutDev(Ptr<const Packet> p, CustomHeader &ch){
 		buf.u32[2] = ch.ack.sport | ((uint32_t)ch.ack.dport << 16);
 
 	uint32_t idx = EcmpHash(buf.u8, 12, m_ecmpSeed) % nexthops.size();
+	// STyGIANet
+	if (m_sourceRouting){
+		if (ch.l3Prot == 0x11) {
+			PppHeader ppp;
+			Ipv4Header ih;
+			p->RemoveHeader(ppp);
+			p->RemoveHeader(ih);
+			uint32_t path = ih.GetIdentification();
+			if (path & 0x0000FFFF < nexthops.size()){ // else fall back to ECMP
+				idx = ih.GetIdentification();
+			}
+			// First hop will use the first 16 bits.
+			// Second hop will use the next 16 bits.
+			// We assume max 3-tier topology. So, the downward path is unique anyway.
+			path = path >> 16;
+			ih.SetIdentification(path);
+			p->AddHeader(ih);
+			p->AddHeader(ppp);
+		}
+		// else fall back to ECMP
+	}
+	else if (m_endHostSpray){
+		if (ch.l3Prot == 0x11) {
+			PppHeader ppp;
+			Ipv4Header ih;
+			p->RemoveHeader(ppp);
+			p->RemoveHeader(ih);
+			uint32_t path = ih.GetIdentification();
+			idx = path % nexthops.size();
+			p->AddHeader(ih);
+			p->AddHeader(ppp);
+		}
+		// else fall back to ECMP
+	}
+	else if (m_reps){
+		PppHeader ppp;
+		Ipv4Header ih;
+		p->RemoveHeader(ppp);
+		p->RemoveHeader(ih);
+		// Use this entropy for one of the 5-tuple values
+		uint32_t entropy = ih.GetIdentification();
+		union {
+			uint8_t u8[4 + 4 + 2 + 2];
+			uint32_t u32[3];
+		} buf;
+		buf.u32[0] = entropy;
+		buf.u32[1] = ch.dip;
+		if (ch.l3Prot == 0x6)
+			buf.u32[2] = ch.tcp.sport | ((uint32_t)ch.tcp.dport << 16);
+		else if (ch.l3Prot == 0x11)
+			buf.u32[2] = ch.udp.sport | ((uint32_t)ch.udp.dport << 16);
+		else if (ch.l3Prot == 0xFC || ch.l3Prot == 0xFD)
+			buf.u32[2] = ch.ack.sport | ((uint32_t)ch.ack.dport << 16);
+
+		p->AddHeader(ih);
+		p->AddHeader(ppp);
+
+		idx = EcmpHash(buf.u8, 12, m_ecmpSeed) % nexthops.size();
+	}
+
 	return nexthops[idx];
 }
 

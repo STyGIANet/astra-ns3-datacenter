@@ -9,8 +9,45 @@
 #include <ns3/custom-header.h>
 #include <ns3/int-header.h>
 #include <vector>
+#include <deque>
+#include <unordered_set>
+//vamsi
+#include <map>
 
 namespace ns3 {
+// STyGIANet
+// A class that stores unique elements in insertion order
+class UniqueOrderedSet {
+  private:
+    std::unordered_set<int> seen;
+    std::deque<int> elements;
+
+  public:
+    void Insert(int value) {
+        if (seen.find(value) == seen.end()) {
+            seen.insert(value);
+            elements.push_back(value);
+        }
+    }
+
+    int Get(){
+    	return elements.empty() ? -1 : elements.front();
+    }
+
+    void Remove() {
+    	int value = Get();
+    	if (value == -1){
+    		return;
+    	}
+		seen.erase(value);
+		elements.pop_front();
+	}
+
+    // Get all the values in insertion order
+    std::vector<int> getElements() const {
+    	return std::vector<int>(elements.begin(), elements.end());
+	}
+};
 
 class RdmaQueuePair : public Object {
 public:
@@ -31,6 +68,21 @@ public:
 	uint32_t lastPktSize;
 	Callback<void> m_notifyAppFinish;
 	Callback<void> m_notifyAppSent;
+
+
+	// STyGIANet
+
+	//reps
+	uint32_t nextEntropy;
+	uint32_t maxEntropies;
+	bool allentropiesTried;
+	UniqueOrderedSet cachedEntropy;
+
+	// reorder buffers for restransmission
+	EventId timeout;
+	std::map<uint32_t, std::tuple<uint32_t,bool, EventId, uint32_t>> pktsInflight; // expectedAckNum, tuple(pktsize, acked, EventId, numTimeouts)
+	std::vector<std::pair<uint32_t, uint32_t>> retransmitQueue; // sequenceNumber, pktsize
+
 	/******************************
 	 * runtime states
 	 *****************************/
@@ -127,6 +179,7 @@ public:
 	int32_t m_milestone_rx;
 	uint32_t m_lastNACK;
 	EventId QcnTimerEvent; // if destroy this rxQp, remember to cancel this timer
+	std::map<uint32_t, uint32_t> reOrderBuffer; // seq, pktsize
 
 	static TypeId GetTypeId (void);
 	RdmaRxQueuePair();

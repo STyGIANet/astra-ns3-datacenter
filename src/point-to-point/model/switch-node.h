@@ -33,8 +33,13 @@ protected:
 
 	uint32_t m_ackHighPrio; // set high priority for ACK/NACK
 
+	// STyGIANet
+	bool m_sourceRouting;
+	bool m_endHostSpray;
+	bool m_reps;
+
 private:
-	int GetOutDev(Ptr<const Packet>, CustomHeader &ch);
+	int GetOutDev(Ptr<Packet>, CustomHeader &ch);
 	void SendToDev(Ptr<Packet>p, CustomHeader &ch);
 	static uint32_t EcmpHash(const uint8_t* key, size_t len, uint32_t seed);
 	void CheckAndSendPfc(uint32_t inDev, uint32_t qIndex);

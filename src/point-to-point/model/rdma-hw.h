@@ -157,6 +157,18 @@ public:
 	void SetPintSmplThresh(double p);
 	void HandleAckHpPint(Ptr<RdmaQueuePair> qp, Ptr<Packet> p, CustomHeader &ch);
 	void UpdateRateHpPint(Ptr<RdmaQueuePair> qp, Ptr<Packet> p, CustomHeader &ch, bool fast_react);
+
+
+	// STyGIANet
+	// Routing and Failure notifications in Ethereal
+	TracedCallback<uint32_t, uint32_t> m_notifyLinkFailure;
+	TracedCallback<uint32_t, uint32_t> m_notifyResetLinkFailure;
+	bool m_sourceRouting;
+	bool m_endHostSpray;
+	bool m_reps;
+	uint64_t rto;
+
+	void RetransmitPacket(Ptr<RdmaQueuePair> qp, uint32_t expectedAckSeq);
 };
 
 } /* namespace ns3 */
