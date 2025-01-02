@@ -104,26 +104,53 @@ int SwitchNode::GetOutDev(Ptr<Packet> p, CustomHeader &ch){
 	// STyGIANet
 	if (m_sourceRouting){
 		if (ch.l3Prot == 0x11) {
+			// For data packets
 			PppHeader ppp;
 			Ipv4Header ih;
 			p->RemoveHeader(ppp);
 			p->RemoveHeader(ih);
-			uint32_t path = ih.GetIdentification();
-			if (path & 0x0000FFFF < nexthops.size()){ // else fall back to ECMP
-				idx = ih.GetIdentification();
+			uint16_t path = ih.GetIdentification() & 0x00FF;
+			if (path < nexthops.size()){ // else fall back to ECMP
+				idx = path;
 			}
 			// First hop will use the first 16 bits.
 			// Second hop will use the next 16 bits.
 			// We assume max 3-tier topology. So, the downward path is unique anyway.
-			path = path >> 16;
+			uint16_t mask = 0xFF00;
+			path = (path & mask) >> 8;
 			ih.SetIdentification(path);
 			p->AddHeader(ih);
 			p->AddHeader(ppp);
 		}
-		// else fall back to ECMP
+		else{
+			// else fall back to ECMP (for ACK/NACK)
+			PppHeader ppp;
+			Ipv4Header ih;
+			p->RemoveHeader(ppp);
+			p->RemoveHeader(ih);
+			// Use this entropy for one of the 5-tuple values
+			uint32_t entropy = ih.GetIdentification();
+			union {
+				uint8_t u8[4 + 4 + 2 + 2];
+				uint32_t u32[3];
+			} buf;
+			buf.u32[0] = entropy;
+			buf.u32[1] = ch.dip;
+			if (ch.l3Prot == 0x6)
+				buf.u32[2] = ch.tcp.sport | ((uint32_t)ch.tcp.dport << 16);
+			else if (ch.l3Prot == 0x11)
+				buf.u32[2] = ch.udp.sport | ((uint32_t)ch.udp.dport << 16);
+			else if (ch.l3Prot == 0xFC || ch.l3Prot == 0xFD)
+				buf.u32[2] = ch.ack.sport | ((uint32_t)ch.ack.dport << 16);
+
+			p->AddHeader(ih);
+			p->AddHeader(ppp);
+
+			idx = EcmpHash(buf.u8, 12, m_ecmpSeed) % nexthops.size();
+		}
 	}
 	else if (m_endHostSpray){
-		if (ch.l3Prot == 0x11) {
+			// idx = (rrspray++)%nexthops.size();
 			PppHeader ppp;
 			Ipv4Header ih;
 			p->RemoveHeader(ppp);
@@ -132,8 +159,6 @@ int SwitchNode::GetOutDev(Ptr<Packet> p, CustomHeader &ch){
 			idx = path % nexthops.size();
 			p->AddHeader(ih);
 			p->AddHeader(ppp);
-		}
-		// else fall back to ECMP
 	}
 	else if (m_reps){
 		PppHeader ppp;

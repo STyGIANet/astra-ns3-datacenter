@@ -233,6 +233,9 @@ void RdmaHw::Setup(QpCompleteCallback cb){
 	}
 	// setup qp complete callback
 	m_qpCompleteCallback = cb;
+
+	// random generator
+	m_rand = CreateObject<UniformRandomVariable>();
 }
 
 uint32_t RdmaHw::GetNicIdxOfQp(Ptr<RdmaQueuePair> qp){
@@ -316,6 +319,7 @@ Ptr<RdmaRxQueuePair> RdmaHw::GetRxQp(uint32_t sip, uint32_t dip, uint16_t sport,
 		q->m_ecn_source.qIndex = pg;
 		// store in map
 		m_rxQpMap[key] = q;
+		q->m_ipid = m_rand->GetInteger(0, q->maxEntropies);
 		return q;
 	}
 	return NULL;
@@ -411,6 +415,16 @@ int RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader &ch){
 		head.SetTtl(64);
 		head.SetPayloadSize(newp->GetSize());
 		if (m_reps){
+			Ptr<Packet> cp = p->Copy();
+			PppHeader ppph; cp->RemoveHeader(ppph);
+			Ipv4Header ihh; cp->RemoveHeader(ihh);
+			uint32_t entropy = ihh.GetIdentification();
+			head.SetIdentification(entropy);
+		}
+		else if (m_endHostSpray){
+			head.SetIdentification(m_rand->GetInteger(0, rxQp->maxEntropies));
+		}
+		else if (m_sourceRouting){
 			Ptr<Packet> cp = p->Copy();
 			PppHeader ppph; cp->RemoveHeader(ppph);
 			Ipv4Header ihh; cp->RemoveHeader(ihh);
@@ -516,20 +530,12 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 		}else {
 			uint32_t goback_seq = seq / m_chunk * m_chunk;
 			qp->Acknowledge(goback_seq);
+			if (qp->timeout.IsRunning()){
+				qp->timeout.Remove();
+			}
+			qp->timeout = Simulator::Schedule(NanoSeconds(rto), &RdmaHw::RecoverQueue, this, qp);
 		}
 		if (qp->IsFinished()){
-			if (qp->timeout.IsRunning()){
-				qp->timeout.Cancel();
-			}
-			// Remove any duplicate packets left over in the inflight queue.
-			// Cancel all associated timers
-			for (auto it = qp->pktsInflight.begin(); it != qp->pktsInflight.end();){
-				std::get<2>(it->second).Remove(); // cancel the timeout;
-				it = qp->pktsInflight.erase(it);
-			}
-			for (auto it = qp->retransmitQueue.begin(); it != qp->retransmitQueue.end();){
-				it = qp->retransmitQueue.erase(it);
-			}
 			QpComplete(qp);
 		}
 	}
@@ -667,12 +673,21 @@ void RdmaHw::RecoverQueue(Ptr<RdmaQueuePair> qp){
 	// STyGIANet
 	// Remove sender's inflight buffer and all the timers
 	for (auto it = qp->pktsInflight.begin(); it != qp->pktsInflight.end();){
-		std::get<2>(it->second).Cancel(); // cancel the timeout;
+		std::get<2>(it->second).Remove(); // cancel the timeout;
 		it = qp->pktsInflight.erase(it);
 	}
-	// This is used for Ethereal, and for any application-level load balancing
-	// Here, we assume that dport is being used for source routing to indicate uplink.
-	m_notifyLinkFailure(qp->dport, qp->m_dest);
+	for (auto it = qp->retransmitQueue.begin(); it != qp->retransmitQueue.end();){
+		it = qp->retransmitQueue.erase(it);
+	}
+	if (!qp->timeout.IsRunning()){
+		// This is used for Ethereal, and for any application-level load balancing
+		// Here, we assume that dport is being used for source routing to indicate uplink.
+		m_notifyLinkFailure(qp->dport, qp->m_dest);
+	}
+	// Allow retransmission in case this QP is dead currently.
+	ChangeRate(qp, qp->m_max_rate);
+	uint32_t nic_idx = GetNicIdxOfQp(qp);
+	m_nic[nic_idx].dev->TriggerTransmit();
 }
 
 void RdmaHw::QpComplete(Ptr<RdmaQueuePair> qp){
@@ -681,6 +696,19 @@ void RdmaHw::QpComplete(Ptr<RdmaQueuePair> qp){
 		Simulator::Cancel(qp->mlx.m_eventUpdateAlpha);
 		Simulator::Cancel(qp->mlx.m_eventDecreaseRate);
 		Simulator::Cancel(qp->mlx.m_rpTimer);
+	}
+
+	if (qp->timeout.IsRunning()){
+		qp->timeout.Remove();
+	}
+	// Remove any duplicate packets left over in the inflight queue.
+	// Cancel all associated timers
+	for (auto it = qp->pktsInflight.begin(); it != qp->pktsInflight.end();){
+		std::get<2>(it->second).Remove(); // cancel the timeout;
+		it = qp->pktsInflight.erase(it);
+	}
+	for (auto it = qp->retransmitQueue.begin(); it != qp->retransmitQueue.end();){
+		it = qp->retransmitQueue.erase(it);
 	}
 
 	// This callback will log info
@@ -767,7 +795,7 @@ Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
 		ipHeader.SetIdentification (qp->dport);
 	}
 	else if (m_endHostSpray){
-		ipHeader.SetIdentification (qp->m_ipid);
+		ipHeader.SetIdentification (m_rand->GetInteger(0, qp->maxEntropies));
 	}
 	else if (m_reps){
 		uint32_t sentBytes = qp->m_size - qp->GetBytesLeft();
@@ -815,6 +843,13 @@ Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
 			std::get<2>(qp->pktsInflight[seqNum + payload_size]) = timeoutEvent; // update the timeout event
 		}
 	}
+	else {
+		// One timeout for the entire QP. Every data packet and ack will reset the timer.
+		if (qp->timeout.IsRunning()){
+			qp->timeout.Remove();
+		}
+		qp->timeout = Simulator::Schedule(NanoSeconds(rto), &RdmaHw::RecoverQueue, this, qp);
+	}
 
 	// return
 	return p;
@@ -822,27 +857,22 @@ Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
 
 // STyGIANet
 void RdmaHw::RetransmitPacket(Ptr<RdmaQueuePair> qp, uint32_t expectedAckSeq){
-	// std::cout << "retransmit" << std::endl;
-	// expectedAckSeq - payloadsize gives the sequence number from the sender perspective.
-	uint32_t payload_size = std::get<0>(qp->pktsInflight[expectedAckSeq]);
-	std::get<2>(qp->pktsInflight[expectedAckSeq]).Remove();
-	uint32_t seqNum = expectedAckSeq - payload_size;
-	qp->retransmitQueue.push_back(std::make_pair(seqNum, payload_size)); // we don't care if the same packet exists in the retransmit queue already
-	// std::cout << "Retransmit " << " node " << m_node->GetId() << " srcIp " << qp->sip.Get()
-				// << " dstIp " << qp->dip.Get() << " srcPort " << qp->sport << " dstPort " <<  qp->dport << std::endl;
+	if (m_reps || m_endHostSpray){
+		// std::cout << "retransmit" << std::endl;
+		// expectedAckSeq - payloadsize gives the sequence number from the sender perspective.
+		uint32_t payload_size = std::get<0>(qp->pktsInflight[expectedAckSeq]);
+		std::get<2>(qp->pktsInflight[expectedAckSeq]).Remove();
+		uint32_t seqNum = expectedAckSeq - payload_size;
+		qp->retransmitQueue.push_back(std::make_pair(seqNum, payload_size)); // we don't care if the same packet exists in the retransmit queue already
+		// std::cout << "Retransmit " << " node " << m_node->GetId() << " srcIp " << qp->sip.Get()
+					// << " dstIp " << qp->dip.Get() << " srcPort " << qp->sport << " dstPort " <<  qp->dport << std::endl;
 
-	if (m_reps){
-		// Time occured.
-		// Remove the oldest cached entropy
-		qp->cachedEntropy.Remove();
+		if (m_reps){
+			// Time occured.
+			// Remove the oldest cached entropy
+			qp->cachedEntropy.Remove();
+		}
 	}
-	else if (m_sourceRouting){
-		// STyGIANet
-		// This is used for Ethereal, and for any application-level load balancing
-		// Here, we assume that dport is being used for source routing to indicate uplink.
-		m_notifyLinkFailure(qp->dport, qp->m_dest);
-	}
-
 	return;
 }
 

@@ -44,6 +44,7 @@ private:
 	static uint32_t EcmpHash(const uint8_t* key, size_t len, uint32_t seed);
 	void CheckAndSendPfc(uint32_t inDev, uint32_t qIndex);
 	void CheckAndSendResume(uint32_t inDev, uint32_t qIndex);
+	uint64_t rrspray=0;
 public:
 	Ptr<SwitchMmu> m_mmu;
 

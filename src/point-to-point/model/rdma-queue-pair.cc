@@ -217,6 +217,7 @@ RdmaRxQueuePair::RdmaRxQueuePair(){
 	m_nackTimer = Time(0);
 	m_milestone_rx = 0;
 	m_lastNACK = 0;
+	maxEntropies = 256;
 }
 
 uint32_t RdmaRxQueuePair::GetHash(void){

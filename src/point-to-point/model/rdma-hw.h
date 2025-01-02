@@ -8,6 +8,7 @@
 #include "qbb-net-device.h"
 #include <unordered_map>
 #include "pint.h"
+#include "ns3/random-variable-stream.h"
 
 namespace ns3 {
 
@@ -167,6 +168,7 @@ public:
 	bool m_endHostSpray;
 	bool m_reps;
 	uint64_t rto;
+	Ptr<UniformRandomVariable> m_rand;
 
 	void RetransmitPacket(Ptr<RdmaQueuePair> qp, uint32_t expectedAckSeq);
 };

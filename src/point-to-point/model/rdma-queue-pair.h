@@ -180,6 +180,7 @@ public:
 	uint32_t m_lastNACK;
 	EventId QcnTimerEvent; // if destroy this rxQp, remember to cancel this timer
 	std::map<uint32_t, uint32_t> reOrderBuffer; // seq, pktsize
+	uint32_t maxEntropies;
 
 	static TypeId GetTypeId (void);
 	RdmaRxQueuePair();

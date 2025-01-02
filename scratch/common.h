@@ -86,6 +86,8 @@ string qlen_mon_file;
 
 unordered_map<uint64_t, uint32_t> rate2kmax, rate2kmin;
 unordered_map<uint64_t, double> rate2pmax;
+unordered_map<uint64_t, uint32_t> rate2kmaxDctcp, rate2kminDctcp;
+unordered_map<uint64_t, double> rate2pmaxDctcp;
 
 /************************************************
  * Runtime varibles
@@ -110,7 +112,8 @@ uint64_t maxRtt, maxBdp;
 std::vector<Ipv4Address> serverAddress;
 
 // maintain port number for each host pair
-std::unordered_map<uint32_t, unordered_map<uint32_t, uint16_t>> portNumber;
+// std::unordered_map<uint32_t, unordered_map<uint32_t, uint16_t>> portNumber;
+std::vector<std::vector<uint16_t>> portNumber;
 
 struct Interface
 {
@@ -644,6 +647,42 @@ ReadConf(string network_configuration)
                 rate2pmax[rate] = p;
             }
         }
+        else if (key.compare("DCTCP_KMAX_MAP") == 0)
+        {
+            int n_k;
+            conf >> n_k;
+            for (int i = 0; i < n_k; i++)
+            {
+                uint64_t rate;
+                uint32_t k;
+                conf >> rate >> k;
+                rate2kmaxDctcp[rate] = k;
+            }
+        }
+        else if (key.compare("DCTCP_KMIN_MAP") == 0)
+        {
+            int n_k;
+            conf >> n_k;
+            for (int i = 0; i < n_k; i++)
+            {
+                uint64_t rate;
+                uint32_t k;
+                conf >> rate >> k;
+                rate2kminDctcp[rate] = k;
+            }
+        }
+        else if (key.compare("DCTCP_PMAX_MAP") == 0)
+        {
+            int n_k;
+            conf >> n_k;
+            for (int i = 0; i < n_k; i++)
+            {
+                uint64_t rate;
+                double p;
+                conf >> rate >> p;
+                rate2pmaxDctcp[rate] = p;
+            }
+        }
         else if (key.compare("BUFFER_SIZE") == 0)
         {
             conf >> buffer_size;
@@ -786,9 +825,9 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             sw->SetAttribute("EcnEnabled", BooleanValue(enable_qcn));
             // STyGIANet
             NS_ASSERT_MSG(source_routing+end_host_spray+reps <= 1, "source_routing, end_host_spray, and reps cannot be set at the same time");
-            sw->SetAttribute("sourceRouting", BooleanValue(source_routing));
-            sw->SetAttribute("endHostSpray", BooleanValue(end_host_spray));
-            sw->SetAttribute("reps", BooleanValue(reps));
+            sw->SetAttribute("sourceRouting", BooleanValue(source_routing==1));
+            sw->SetAttribute("endHostSpray", BooleanValue(end_host_spray==1));
+            sw->SetAttribute("reps", BooleanValue(reps==1));
         }
     }
 
@@ -920,7 +959,19 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
                               "must set kmax for each link speed");
                 NS_ASSERT_MSG(rate2pmax.find(rate) != rate2pmax.end(),
                               "must set pmax for each link speed");
-                sw->m_mmu->ConfigEcn(j, rate2kmin[rate], rate2kmax[rate], rate2pmax[rate]);
+                if (cc_mode == 8){
+                    NS_ASSERT_MSG(rate2kminDctcp.find(rate) != rate2kminDctcp.end(),
+                              "must set kmin for each link speed");
+                    NS_ASSERT_MSG(rate2kmaxDctcp.find(rate) != rate2kmaxDctcp.end(),
+                                  "must set kmax for each link speed");
+                    NS_ASSERT_MSG(rate2pmaxDctcp.find(rate) != rate2pmaxDctcp.end(),
+                                  "must set pmax for each link speed");
+                    // kmin = kmax = bdp/7
+                    sw->m_mmu->ConfigEcn(j, rate2kminDctcp[rate], rate2kmaxDctcp[rate], rate2pmaxDctcp[rate]);
+                }
+                else{
+                    sw->m_mmu->ConfigEcn(j, rate2kmin[rate], rate2kmax[rate], rate2pmax[rate]);
+                }
                 // set pfc
                 uint64_t delay =
                     DynamicCast<QbbChannel>(dev->GetChannel())->GetDelay().GetTimeStep();
@@ -982,9 +1033,9 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             // STyGIANet
             // set routing mode. Default is ecmp.
             NS_ASSERT_MSG(source_routing+end_host_spray+reps <= 1, "source_routing, end_host_spray, and reps cannot be set at the same time");
-            rdmaHw->SetAttribute("sourceRouting", BooleanValue(source_routing));
-            rdmaHw->SetAttribute("endHostSpray", BooleanValue(end_host_spray));
-            rdmaHw->SetAttribute("reps", BooleanValue(reps));
+            rdmaHw->SetAttribute("sourceRouting", BooleanValue(source_routing==1));
+            rdmaHw->SetAttribute("endHostSpray", BooleanValue(end_host_spray==1));
+            rdmaHw->SetAttribute("reps", BooleanValue(reps==1));
             rdmaHw->SetAttribute("rto", UintegerValue(rto));
 
             // create and install RdmaDriver
@@ -1096,15 +1147,16 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
 
     Time interPacketInterval = Seconds(0.0000005 / 2);
     // maintain port number for each host
-    for (uint32_t i = 0; i < node_num; i++)
-    {
-        if (n.Get(i)->GetNodeType() == 0)
-            for (uint32_t j = 0; j < node_num; j++)
-            {
-                if (n.Get(j)->GetNodeType() == 0)
-                    portNumber[i][j] = 10000; // each host pair use port number from 10000
-            }
-    }
+    // for (uint32_t i = 0; i < node_num; i++)
+    // {
+    //     if (n.Get(i)->GetNodeType() == 0)
+    //         for (uint32_t j = 0; j < node_num; j++)
+    //         {
+    //             if (n.Get(j)->GetNodeType() == 0)
+    //                 portNumber[i][j] = 10000; // each host pair use port number from 10000
+    //         }
+    // }
+    portNumber.resize(node_num, std::vector<uint16_t>(node_num, 10000));
     flow_input.idx = -1;
 
     topof.close();
@@ -1123,6 +1175,6 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
     // schedule buffer monitor
     FILE* qlen_output = fopen(qlen_mon_file.c_str(), "w");
     Simulator::Schedule(NanoSeconds(qlen_mon_start), &monitor_buffer, qlen_output, &n);
-
+    std::cout << "SetupNetwork finished!" << std::endl;
     return true;
 }
