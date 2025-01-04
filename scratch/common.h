@@ -1119,11 +1119,10 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
     }
 
     FILE* trace_output = fopen(trace_output_file.c_str(), "w");
-    if (enable_trace)
-        qbb.EnableTracing(trace_output, trace_nodes);
-
     // dump link speed to trace file
+    if (enable_trace)
     {
+        qbb.EnableTracing(trace_output, trace_nodes);
         SimSetting sim_setting;
         for (auto i : nbr2if)
         {
@@ -1140,7 +1139,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         sim_setting.win = maxBdp;
         sim_setting.Serialize(trace_output);
     }
-
+    std::cout << "Computing Global Routes..." << std::endl;
     Ipv4GlobalRoutingHelper::PopulateRoutingTables();
 
     NS_LOG_INFO("Create Applications.");
@@ -1156,6 +1155,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
     //                 portNumber[i][j] = 10000; // each host pair use port number from 10000
     //         }
     // }
+    std::cout << "port number resize" << std::endl;
     portNumber.resize(node_num, std::vector<uint16_t>(node_num, 10000));
     flow_input.idx = -1;
 
