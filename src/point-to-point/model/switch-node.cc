@@ -117,7 +117,7 @@ int SwitchNode::GetOutDev(Ptr<Packet> p, CustomHeader &ch){
 			// Second hop will use the next 16 bits.
 			// We assume max 3-tier topology. So, the downward path is unique anyway.
 			uint16_t mask = 0xFF00;
-			path = (path & mask) >> 8;
+			path = (ih.GetIdentification() & mask) >> 8;
 			ih.SetIdentification(path);
 			p->AddHeader(ih);
 			p->AddHeader(ppp);
