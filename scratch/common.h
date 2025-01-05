@@ -261,7 +261,7 @@ monitor_buffer(FILE* qlen_output, NodeContainer* n)
         { // is switch
             Ptr<SwitchNode> sw = DynamicCast<SwitchNode>(n->Get(i));
             // 0 indicates the total buffer occupancy here
-            fprintf(qlen_output, "%lu %lu %lu %lu\n", i, 0, sw->total_bytes, Simulator::Now().GetTimeStep());
+            fprintf(qlen_output, "%lu %lu %lu %lu\n", i, 0, sw->m_mmu->total_bytes, Simulator::Now().GetTimeStep());
             for (uint32_t j = 1; j < sw->GetNDevices(); j++)
             {
                 uint32_t size = 0;
