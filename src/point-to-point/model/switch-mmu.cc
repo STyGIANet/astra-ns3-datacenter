@@ -60,6 +60,7 @@ namespace ns3 {
 				shared_used_bytes += std::min(psize, new_bytes - reserve);
 			}
 		}
+		total_bytes += psize;
 	}
 	void SwitchMmu::UpdateEgressAdmission(uint32_t port, uint32_t qIndex, uint32_t psize){
 		egress_bytes[port][qIndex] += psize;
@@ -70,6 +71,7 @@ namespace ns3 {
 		hdrm_bytes[port][qIndex] -= from_hdrm;
 		ingress_bytes[port][qIndex] -= psize - from_hdrm;
 		shared_used_bytes -= from_shared;
+		total_bytes = total_bytes>psize? total_bytes-psize:0;
 	}
 	void SwitchMmu::RemoveFromEgressAdmission(uint32_t port, uint32_t qIndex, uint32_t psize){
 		egress_bytes[port][qIndex] -= psize;

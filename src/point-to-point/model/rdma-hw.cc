@@ -418,7 +418,8 @@ int RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader &ch){
 			Ptr<Packet> cp = p->Copy();
 			PppHeader ppph; cp->RemoveHeader(ppph);
 			Ipv4Header ihh; cp->RemoveHeader(ihh);
-			uint32_t entropy = ihh.GetIdentification();
+			// uint32_t entropy = ihh.GetIdentification();
+			uint32_t entropy = ((uint16_t)(ihh.GetIdentification()) >> 8) | ((uint16_t)(ihh.GetIdentification()) << 8);
 			head.SetIdentification(entropy);
 		}
 		else if (m_endHostSpray){
@@ -507,9 +508,9 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 	else {
 		if (!m_backto0){
 			if (m_reps || m_endHostSpray){
-				auto it = qp->pktsInflight.find(seq);
-				if (it != qp->pktsInflight.end()){
-					std::get<1>(it->second) = true; // just indicate that the packet has been ACKed
+				auto itThisPkt = qp->pktsInflight.find(seq);
+				if (itThisPkt != qp->pktsInflight.end()){
+					std::get<1>(itThisPkt->second) = true; // just indicate that the packet has been ACKed
 				}
 				// Try to remove all the consecutive packets that have been acknowledged so far
 				// in the retransmit queue.
@@ -526,14 +527,14 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 			}
 			else{
 				qp->Acknowledge(seq);
+				if (qp->timeout.IsRunning()){
+					qp->timeout.Remove();
+				}
+				qp->timeout = Simulator::Schedule(NanoSeconds(rto), &RdmaHw::RecoverQueue, this, qp);
 			}
 		}else {
 			uint32_t goback_seq = seq / m_chunk * m_chunk;
 			qp->Acknowledge(goback_seq);
-			if (qp->timeout.IsRunning()){
-				qp->timeout.Remove();
-			}
-			qp->timeout = Simulator::Schedule(NanoSeconds(rto), &RdmaHw::RecoverQueue, this, qp);
 		}
 		if (qp->IsFinished()){
 			QpComplete(qp);
@@ -693,9 +694,12 @@ void RdmaHw::RecoverQueue(Ptr<RdmaQueuePair> qp){
 void RdmaHw::QpComplete(Ptr<RdmaQueuePair> qp){
 	NS_ASSERT(!m_qpCompleteCallback.IsNull());
 	if (m_cc_mode == 1){
-		Simulator::Cancel(qp->mlx.m_eventUpdateAlpha);
-		Simulator::Cancel(qp->mlx.m_eventDecreaseRate);
-		Simulator::Cancel(qp->mlx.m_rpTimer);
+		Simulator::Remove(qp->mlx.m_eventUpdateAlpha);
+		Simulator::Remove(qp->mlx.m_eventDecreaseRate);
+		Simulator::Remove(qp->mlx.m_rpTimer);
+		// just in case if dev has a nextAvail scheduled for too long time in the future.
+		// This will just allow the event to finish sooner and end the simulation.
+		ChangeRate(qp, qp->m_max_rate); 
 	}
 
 	if (qp->timeout.IsRunning()){
@@ -924,6 +928,7 @@ void RdmaHw::UpdateAlphaMlx(Ptr<RdmaQueuePair> q){
 	ScheduleUpdateAlphaMlx(q);
 }
 void RdmaHw::ScheduleUpdateAlphaMlx(Ptr<RdmaQueuePair> q){
+	Simulator::Remove(q->mlx.m_eventUpdateAlpha);
 	q->mlx.m_eventUpdateAlpha = Simulator::Schedule(MicroSeconds(m_alpha_resume_interval), &RdmaHw::UpdateAlphaMlx, this, q);
 }
 
@@ -957,11 +962,11 @@ void RdmaHw::CheckRateDecreaseMlx(Ptr<RdmaQueuePair> q){
 		}
 		if (clamp)
 			q->mlx.m_targetRate = q->m_rate;
-		q->m_rate = std::max(m_minRate, q->m_rate * (1 - q->mlx.m_alpha / 2));
+		q->m_rate = std::max(m_minRate, q->m_rate * (1 - q->mlx.m_alpha / 2));	
 		// reset rate increase related things
 		q->mlx.m_rpTimeStage = 0;
 		q->mlx.m_decrease_cnp_arrived = false;
-		Simulator::Cancel(q->mlx.m_rpTimer);
+		Simulator::Remove(q->mlx.m_rpTimer);
 		q->mlx.m_rpTimer = Simulator::Schedule(MicroSeconds(m_rpgTimeReset), &RdmaHw::RateIncEventTimerMlx, this, q);
 		#if PRINT_LOG
 		printf("(%.3lf %.3lf)\n", q->mlx.m_targetRate.GetBitRate() * 1e-9, q->m_rate.GetBitRate() * 1e-9);
@@ -969,10 +974,12 @@ void RdmaHw::CheckRateDecreaseMlx(Ptr<RdmaQueuePair> q){
 	}
 }
 void RdmaHw::ScheduleDecreaseRateMlx(Ptr<RdmaQueuePair> q, uint32_t delta){
+	Simulator::Remove(q->mlx.m_eventDecreaseRate);
 	q->mlx.m_eventDecreaseRate = Simulator::Schedule(MicroSeconds(m_rateDecreaseInterval) + NanoSeconds(delta), &RdmaHw::CheckRateDecreaseMlx, this, q);
 }
 
 void RdmaHw::RateIncEventTimerMlx(Ptr<RdmaQueuePair> q){
+	Simulator::Remove(q->mlx.m_rpTimer);
 	q->mlx.m_rpTimer = Simulator::Schedule(MicroSeconds(m_rpgTimeReset), &RdmaHw::RateIncEventTimerMlx, this, q);
 	RateIncEventMlx(q);
 	q->mlx.m_rpTimeStage++;

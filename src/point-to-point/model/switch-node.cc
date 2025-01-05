@@ -103,7 +103,7 @@ int SwitchNode::GetOutDev(Ptr<Packet> p, CustomHeader &ch){
 	uint32_t idx = EcmpHash(buf.u8, 12, m_ecmpSeed) % nexthops.size();
 	// STyGIANet
 	if (m_sourceRouting){
-		if (ch.l3Prot == 0x11) {
+		// if (ch.l3Prot == 0x11) {
 			// For data packets
 			PppHeader ppp;
 			Ipv4Header ih;
@@ -116,40 +116,40 @@ int SwitchNode::GetOutDev(Ptr<Packet> p, CustomHeader &ch){
 			// First hop will use the first 16 bits.
 			// Second hop will use the next 16 bits.
 			// We assume max 3-tier topology. So, the downward path is unique anyway.
-			uint16_t mask = 0xFF00;
-			path = (ih.GetIdentification() & mask) >> 8;
+			// uint16_t mask = 0xFF00;
+			path = ((uint16_t)(ih.GetIdentification()) >> 8) | ((uint16_t)(ih.GetIdentification()) << 8);
 			ih.SetIdentification(path);
 			p->AddHeader(ih);
 			p->AddHeader(ppp);
-		}
-		else{
-			// else fall back to ECMP (for ACK/NACK)
-			PppHeader ppp;
-			Ipv4Header ih;
-			p->RemoveHeader(ppp);
-			p->RemoveHeader(ih);
-			// Use this entropy for one of the 5-tuple values
-			uint32_t entropy = ih.GetIdentification();
-			union {
-				uint8_t u8[4 + 4 + 2 + 2];
-				uint32_t u32[3];
-			} buf;
-			buf.u32[0] = entropy;
-			buf.u32[1] = ch.dip;
-			if (ch.l3Prot == 0x6)
-				buf.u32[2] = ch.tcp.sport | ((uint32_t)ch.tcp.dport << 16);
-			else if (ch.l3Prot == 0x11)
-				buf.u32[2] = ch.udp.sport | ((uint32_t)ch.udp.dport << 16);
-			else if (ch.l3Prot == 0xFC || ch.l3Prot == 0xFD)
-				buf.u32[2] = ch.ack.sport | ((uint32_t)ch.ack.dport << 16);
+		// }
+		// else{
+		// 	// else fall back to ECMP (for ACK/NACK)
+		// 	PppHeader ppp;
+		// 	Ipv4Header ih;
+		// 	p->RemoveHeader(ppp);
+		// 	p->RemoveHeader(ih);
+		// 	// Use this entropy for one of the 5-tuple values
+		// 	uint32_t entropy = ih.GetIdentification();
+		// 	union {
+		// 		uint8_t u8[4 + 4 + 2 + 2];
+		// 		uint32_t u32[3];
+		// 	} buf;
+		// 	buf.u32[0] = entropy;
+		// 	buf.u32[1] = ch.dip;
+		// 	if (ch.l3Prot == 0x6)
+		// 		buf.u32[2] = ch.tcp.sport | ((uint32_t)ch.tcp.dport << 16);
+		// 	else if (ch.l3Prot == 0x11)
+		// 		buf.u32[2] = ch.udp.sport | ((uint32_t)ch.udp.dport << 16);
+		// 	else if (ch.l3Prot == 0xFC || ch.l3Prot == 0xFD)
+		// 		buf.u32[2] = ch.ack.sport | ((uint32_t)ch.ack.dport << 16);
 
-			p->AddHeader(ih);
-			p->AddHeader(ppp);
+		// 	p->AddHeader(ih);
+		// 	p->AddHeader(ppp);
 
-			idx = EcmpHash(buf.u8, 12, m_ecmpSeed) % nexthops.size();
-		}
+		// 	idx = EcmpHash(buf.u8, 12, m_ecmpSeed) % nexthops.size();
+		// }
 	}
-	else if (m_endHostSpray){
+	else if (m_endHostSpray && ch.l3Prot == 0x11){
 			// idx = (rrspray++)%nexthops.size();
 			PppHeader ppp;
 			Ipv4Header ih;

@@ -59,6 +59,7 @@ public:
 	uint32_t ingress_bytes[pCnt][qCnt];
 	uint32_t paused[pCnt][qCnt];
 	uint32_t egress_bytes[pCnt][qCnt];
+	uint64_t total_bytes;
 };
 
 } /* namespace ns3 */

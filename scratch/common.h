@@ -188,6 +188,70 @@ struct QlenDistribution
 
 map<uint32_t, map<uint32_t, uint32_t>> queue_result;
 
+// void
+// monitor_buffer(FILE* qlen_output, NodeContainer* n)
+// {
+//     for (uint32_t i = 0; i < n->GetN(); i++)
+//     {
+//         if (n->Get(i)->GetNodeType() == 1)
+//         { // is switch
+//             Ptr<SwitchNode> sw = DynamicCast<SwitchNode>(n->Get(i));
+//             if (queue_result.find(i) == queue_result.end())
+//                 queue_result[i];
+//             // fprintf(qlen_output, "\n");
+//             // fprintf(qlen_output, "time: %lu\n", Simulator::Now().GetTimeStep());
+//             int test = 0;
+//             for (uint32_t j = 1; j < sw->GetNDevices(); j++)
+//             {
+//                 uint32_t size = 0;
+//                 for (uint32_t k = 0; k < SwitchMmu::qCnt; k++)
+//                     size += sw->m_mmu->egress_bytes[j][k];
+//                 // if (queue_result[i].find(j) == queue_result[i].end())
+//                 //{
+//                 //	vector<uint32_t> v;
+//                 //	queue_result[i][j] = v;
+//                 // }
+//                 if (size >= 1000)
+//                 {
+//                     queue_result[i][j] = size; // .push_back(size);
+//                     if (test == 0)
+//                     {
+//                         test = 1;
+//                         fprintf(qlen_output, "time %lu %u ", Simulator::Now().GetTimeStep(), i);
+//                     }
+//                     // if(j==1){
+//                     // fprintf(qlen_output, "t %lu %u j %u %u ",
+//                     // Simulator::Now().GetTimeStep(), i, j, size);
+//                     if (j < sw->GetNDevices() - 1)
+//                     {
+//                         test = 2;
+//                         fprintf(qlen_output, "j %u %u ", j, size);
+//                     }
+//                     else if (j == sw->GetNDevices() - 1)
+//                     {
+//                         fprintf(qlen_output, "j %u %u\n", j, size);
+//                         test = 3;
+//                     }
+//                 }
+//                 if (j == sw->GetNDevices() - 1 && test == 2)
+//                 {
+//                     fprintf(qlen_output, "\n");
+//                 }
+//                 // else
+//                 //	queue_result[i][j]+=size;
+//                 // queue_result[i][j].add(size);
+//             }
+//             fflush(qlen_output);
+//             // fprintf(qlen_output, "\n");
+//         }
+//     }
+//     fflush(qlen_output);
+//     if (!Simulator::IsFinished())
+//     {
+//         Simulator::Schedule(NanoSeconds(qlen_mon_interval), &monitor_buffer, qlen_output, n);
+//     }
+// }
+
 void
 monitor_buffer(FILE* qlen_output, NodeContainer* n)
 {
@@ -196,53 +260,20 @@ monitor_buffer(FILE* qlen_output, NodeContainer* n)
         if (n->Get(i)->GetNodeType() == 1)
         { // is switch
             Ptr<SwitchNode> sw = DynamicCast<SwitchNode>(n->Get(i));
-            if (queue_result.find(i) == queue_result.end())
-                queue_result[i];
-            // fprintf(qlen_output, "\n");
-            // fprintf(qlen_output, "time: %lu\n", Simulator::Now().GetTimeStep());
-            int test = 0;
+            // 0 indicates the total buffer occupancy here
+            fprintf(qlen_output, "%lu %lu %lu %lu\n", i, 0, sw->total_bytes, Simulator::Now().GetTimeStep());
             for (uint32_t j = 1; j < sw->GetNDevices(); j++)
             {
                 uint32_t size = 0;
                 for (uint32_t k = 0; k < SwitchMmu::qCnt; k++)
                     size += sw->m_mmu->egress_bytes[j][k];
-                // if (queue_result[i].find(j) == queue_result[i].end())
-                //{
-                //	vector<uint32_t> v;
-                //	queue_result[i][j] = v;
-                // }
-                if (size >= 1000)
+                
+                if (size >= 10000)
                 {
-                    queue_result[i][j] = size; // .push_back(size);
-                    if (test == 0)
-                    {
-                        test = 1;
-                        fprintf(qlen_output, "time %lu %u ", Simulator::Now().GetTimeStep(), i);
-                    }
-                    // if(j==1){
-                    // fprintf(qlen_output, "t %lu %u j %u %u ",
-                    // Simulator::Now().GetTimeStep(), i, j, size);
-                    if (j < sw->GetNDevices() - 1)
-                    {
-                        test = 2;
-                        fprintf(qlen_output, "j %u %u ", j, size);
-                    }
-                    else if (j == sw->GetNDevices() - 1)
-                    {
-                        fprintf(qlen_output, "j %u %u\n", j, size);
-                        test = 3;
-                    }
+                    fprintf(qlen_output, "%lu %lu %lu %lu\n", i, j, size, Simulator::Now().GetTimeStep());
                 }
-                if (j == sw->GetNDevices() - 1 && test == 2)
-                {
-                    fprintf(qlen_output, "\n");
-                }
-                // else
-                //	queue_result[i][j]+=size;
-                // queue_result[i][j].add(size);
             }
             fflush(qlen_output);
-            // fprintf(qlen_output, "\n");
         }
     }
     fflush(qlen_output);
