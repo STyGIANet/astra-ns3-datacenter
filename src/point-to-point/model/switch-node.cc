@@ -149,7 +149,7 @@ int SwitchNode::GetOutDev(Ptr<Packet> p, CustomHeader &ch){
 		// 	idx = EcmpHash(buf.u8, 12, m_ecmpSeed) % nexthops.size();
 		// }
 	}
-	else if (m_endHostSpray && ch.l3Prot == 0x11){
+	else if (m_endHostSpray){
 			// idx = (rrspray++)%nexthops.size();
 			PppHeader ppp;
 			Ipv4Header ih;

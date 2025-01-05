@@ -418,8 +418,7 @@ int RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader &ch){
 			Ptr<Packet> cp = p->Copy();
 			PppHeader ppph; cp->RemoveHeader(ppph);
 			Ipv4Header ihh; cp->RemoveHeader(ihh);
-			// uint32_t entropy = ihh.GetIdentification();
-			uint32_t entropy = ((uint16_t)(ihh.GetIdentification()) >> 8) | ((uint16_t)(ihh.GetIdentification()) << 8);
+			uint32_t entropy = ihh.GetIdentification();
 			head.SetIdentification(entropy);
 		}
 		else if (m_endHostSpray){
@@ -429,7 +428,8 @@ int RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader &ch){
 			Ptr<Packet> cp = p->Copy();
 			PppHeader ppph; cp->RemoveHeader(ppph);
 			Ipv4Header ihh; cp->RemoveHeader(ihh);
-			uint32_t entropy = ihh.GetIdentification();
+			uint32_t entropy = ((uint16_t)(ihh.GetIdentification()) >> 8) | ((uint16_t)(ihh.GetIdentification()) << 8);
+			// uint32_t entropy = ihh.GetIdentification();
 			head.SetIdentification(entropy);
 		}
 		else{
