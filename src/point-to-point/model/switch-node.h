@@ -37,6 +37,7 @@ protected:
 	bool m_sourceRouting;
 	bool m_endHostSpray;
 	bool m_reps;
+	bool m_switchSpray;
 
 private:
 	int GetOutDev(Ptr<Packet>, CustomHeader &ch);

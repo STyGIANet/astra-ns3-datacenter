@@ -46,9 +46,14 @@ TypeId SwitchNode::GetTypeId (void)
 			MakeBooleanAccessor(&SwitchNode::m_sourceRouting),
 			MakeBooleanChecker())
 	.AddAttribute("endHostSpray",
-			"use source routing",
+			"use end host packet spraying",
 			BooleanValue(false),
 			MakeBooleanAccessor(&SwitchNode::m_endHostSpray),
+			MakeBooleanChecker())
+	.AddAttribute("switchSpray",
+			"use switch packet spraying",
+			BooleanValue(false),
+			MakeBooleanAccessor(&SwitchNode::m_switchSpray),
 			MakeBooleanChecker())
 	.AddAttribute("reps",
 			"use reps load balancing",
@@ -150,15 +155,40 @@ int SwitchNode::GetOutDev(Ptr<Packet> p, CustomHeader &ch){
 		// }
 	}
 	else if (m_endHostSpray){
-			// idx = (rrspray++)%nexthops.size();
 			PppHeader ppp;
 			Ipv4Header ih;
 			p->RemoveHeader(ppp);
 			p->RemoveHeader(ih);
-			uint32_t path = ih.GetIdentification();
-			idx = path % nexthops.size();
+			// Use this entropy for one of the 5-tuple values
+			uint32_t entropy = ih.GetIdentification();
+			union {
+				uint8_t u8[4 + 4 + 2 + 2];
+				uint32_t u32[3];
+			} buf;
+			buf.u32[0] = ch.sip;
+			buf.u32[1] = ch.dip;
+			if (ch.l3Prot == 0x6)
+				buf.u32[2] = ch.tcp.sport | ((uint32_t)ch.tcp.dport << 16);
+			else if (ch.l3Prot == 0x11)
+				buf.u32[2] = entropy | ((uint32_t)ch.udp.dport << 16);
+			else if (ch.l3Prot == 0xFC || ch.l3Prot == 0xFD)
+				buf.u32[2] = entropy | ((uint32_t)ch.ack.dport << 16);
+
 			p->AddHeader(ih);
 			p->AddHeader(ppp);
+
+			idx = EcmpHash(buf.u8, 12, m_ecmpSeed) % nexthops.size();
+			// PppHeader ppp;
+			// Ipv4Header ih;
+			// p->RemoveHeader(ppp);
+			// p->RemoveHeader(ih);
+			// uint32_t path = ih.GetIdentification();
+			// idx = path % nexthops.size();
+			// p->AddHeader(ih);
+			// p->AddHeader(ppp);
+	}
+	else if (m_switchSpray){
+			idx = (rrspray++)%nexthops.size();
 	}
 	else if (m_reps){
 		PppHeader ppp;
@@ -171,14 +201,14 @@ int SwitchNode::GetOutDev(Ptr<Packet> p, CustomHeader &ch){
 			uint8_t u8[4 + 4 + 2 + 2];
 			uint32_t u32[3];
 		} buf;
-		buf.u32[0] = entropy;
+		buf.u32[0] = ch.sip;
 		buf.u32[1] = ch.dip;
 		if (ch.l3Prot == 0x6)
 			buf.u32[2] = ch.tcp.sport | ((uint32_t)ch.tcp.dport << 16);
 		else if (ch.l3Prot == 0x11)
-			buf.u32[2] = ch.udp.sport | ((uint32_t)ch.udp.dport << 16);
+			buf.u32[2] = entropy | ((uint32_t)ch.udp.dport << 16);
 		else if (ch.l3Prot == 0xFC || ch.l3Prot == 0xFD)
-			buf.u32[2] = ch.ack.sport | ((uint32_t)ch.ack.dport << 16);
+			buf.u32[2] = entropy | ((uint32_t)ch.ack.dport << 16);
 
 		p->AddHeader(ih);
 		p->AddHeader(ppp);
