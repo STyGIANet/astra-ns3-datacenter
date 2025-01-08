@@ -77,6 +77,7 @@ public:
 	uint32_t maxEntropies;
 	bool allentropiesTried;
 	UniqueOrderedSet cachedEntropy;
+	uint32_t maxQps = 0;
 
 	// reorder buffers for restransmission
 	EventId timeout;

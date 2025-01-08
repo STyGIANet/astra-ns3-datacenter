@@ -94,6 +94,9 @@ namespace ns3 {
 	int RdmaEgressQueue::GetNextQindex(bool paused[]){
 		bool found = false;
 		uint32_t qIndex;
+		if (GetFlowCount() > maxQps){
+			maxQps = GetFlowCount();
+		}
 		if (!paused[ack_q_idx] && m_ackQ->GetNPackets() > 0)
 			return -1;
 
@@ -104,6 +107,7 @@ namespace ns3 {
 		for (qIndex = 1; qIndex <= fcount; qIndex++){
 			uint32_t idx = (qIndex + m_rrlast) % fcount;
 			Ptr<RdmaQueuePair> qp = m_qpGrp->Get(idx);
+			qp->maxQps = maxQps;
 			if(qp->GetBytesLeft()<=0){
 				int sender_node = qp->GetSrc();
 				int receiver_node = qp->GetDest();
