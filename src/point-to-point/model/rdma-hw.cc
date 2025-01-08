@@ -293,6 +293,8 @@ void RdmaHw::AddQueuePair(uint32_t src, uint32_t dest, uint64_t tag, uint64_t si
 		qp->hpccPint.m_curRate = m_bps;
 	}
 
+	qp->m_ipid = m_rand->GetInteger(0, qp->maxEntropies);
+
 	// Notify Nic
 	m_nic[nic_idx].dev->NewQp(qp);
 }
@@ -422,7 +424,7 @@ int RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader &ch){
 			head.SetIdentification(entropy);
 		}
 		else if (m_endHostSpray){
-			head.SetIdentification(m_rand->GetInteger(0, rxQp->maxEntropies));
+			head.SetIdentification(rxQp->m_ipid++);
 		}
 		else if (m_sourceRouting){
 			Ptr<Packet> cp = p->Copy();
@@ -799,7 +801,7 @@ Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
 		ipHeader.SetIdentification (qp->dport);
 	}
 	else if (m_endHostSpray){
-		ipHeader.SetIdentification (m_rand->GetInteger(0, qp->maxEntropies));
+		ipHeader.SetIdentification (qp->m_ipid);
 	}
 	else if (m_reps){
 		uint32_t sentBytes = qp->m_size - qp->GetBytesLeft();
