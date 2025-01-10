@@ -29,7 +29,7 @@ RdmaClientHelper::RdmaClientHelper ()
 }
 
 RdmaClientHelper::RdmaClientHelper (uint16_t pg, Ipv4Address sip, Ipv4Address dip, uint16_t sport, uint16_t dport, uint64_t size, uint32_t win, uint64_t baseRtt,
-        void (*msg_handler)(void* fun_arg), void* fun_arg, int tag, int src, int dest)
+        void (*msg_handler_tmp)(void* fun_arg_tmp), void* fun_arg_tmp, int tag, int src, int dest)
 {
 	m_factory.SetTypeId (RdmaClient::GetTypeId ());
 	SetAttribute ("PriorityGroup", UintegerValue (pg));
@@ -43,8 +43,8 @@ RdmaClientHelper::RdmaClientHelper (uint16_t pg, Ipv4Address sip, Ipv4Address di
   SetAttribute ("Tag", UintegerValue (tag));
   SetAttribute ("Src", UintegerValue (src));
   SetAttribute ("Dest", UintegerValue (dest));
-  msg_handler = msg_handler;
-  fun_arg = fun_arg;
+  msg_handler = msg_handler_tmp;
+  fun_arg = fun_arg_tmp;
 }
 
 void
