@@ -684,6 +684,7 @@ void RdmaHw::RecoverQueue(Ptr<RdmaQueuePair> qp){
 		it = qp->retransmitQueue.erase(it);
 	}
 	if (!qp->timeout.IsRunning()){
+		std::cout << "timeout at node " << m_node->GetId() << std::endl;
 		// This is used for Ethereal, and for any application-level load balancing
 		// Here, we assume that dport is being used for source routing to indicate uplink.
 		m_notifyLinkFailure(qp->dport, qp->m_dest);
