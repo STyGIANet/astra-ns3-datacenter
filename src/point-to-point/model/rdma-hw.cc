@@ -514,6 +514,7 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 				auto itThisPkt = qp->pktsInflight.find(seq);
 				if (itThisPkt != qp->pktsInflight.end()){
 					std::get<1>(itThisPkt->second) = true; // just indicate that the packet has been ACKed
+					std::get<2>(itThisPkt->second).Remove(); // cancel the timeout;
 				}
 				// Try to remove all the consecutive packets that have been acknowledged so far
 				// in the retransmit queue.
