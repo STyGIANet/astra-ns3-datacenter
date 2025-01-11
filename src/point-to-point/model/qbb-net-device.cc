@@ -52,6 +52,7 @@ NS_LOG_COMPONENT_DEFINE("QbbNetDevice");
 namespace ns3 {
 
 	uint32_t RdmaEgressQueue::ack_q_idx = 3;
+	uint32_t RdmaEgressQueue::stprio = 0;
 	// RdmaEgressQueue
 	TypeId RdmaEgressQueue::GetTypeId (void)
 	{
@@ -106,6 +107,9 @@ namespace ns3 {
 		uint32_t min_finish_id = 0xffffffff;
 		for (qIndex = 1; qIndex <= fcount; qIndex++){
 			uint32_t idx = (qIndex + m_rrlast) % fcount;
+			if (stprio){// Always serve the oldest qp first
+				idx = (qIndex - 1) % fcount;
+			}
 			Ptr<RdmaQueuePair> qp = m_qpGrp->Get(idx);
 			qp->maxQps = maxQps;
 			if(qp->GetBytesLeft()<=0){

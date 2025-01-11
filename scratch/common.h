@@ -73,6 +73,7 @@ bool rate_bound = true;
 int nic_total_pause_time = 0; // slightly less than finish time without inefficiency in us
 
 uint32_t ack_high_prio = 0;
+uint32_t stprio = 0;
 uint64_t link_down_time = 0;
 uint32_t link_down_A = 0, link_down_B = 0;
 
@@ -766,6 +767,10 @@ ReadConf(string network_configuration)
         {
             conf >> rto;
         }
+        else if (key.compare("STPRIO") == 0)
+        {
+            conf >> stprio;
+        }
         fflush(stdout);
     }
     conf.close();
@@ -1088,6 +1093,8 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         RdmaEgressQueue::ack_q_idx = 0;
     else
         RdmaEgressQueue::ack_q_idx = 3;
+
+    RdmaEgressQueue::stprio = stprio;
 
     // setup routing
     CalculateRoutes(n);
