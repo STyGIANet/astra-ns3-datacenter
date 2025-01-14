@@ -81,7 +81,7 @@ uint32_t enable_trace = 1;
 
 uint32_t buffer_size = 16;
 
-uint32_t qlen_dump_interval = 1000, qlen_mon_interval = 100;
+uint32_t qlen_dump_interval = 1000, qlen_mon_interval = 4000;
 uint64_t qlen_mon_start = 0, qlen_mon_end = 2100000000;
 string qlen_mon_file;
 
@@ -278,7 +278,7 @@ monitor_buffer(FILE* qlen_output, NodeContainer* n)
         }
     }
     fflush(qlen_output);
-    if (!Simulator::IsFinished())
+    if (!Simulator::IsFinished() && Simulator::Now().GetNanoSeconds() < qlen_mon_end)
     {
         Simulator::Schedule(NanoSeconds(qlen_mon_interval), &monitor_buffer, qlen_output, n);
     }
