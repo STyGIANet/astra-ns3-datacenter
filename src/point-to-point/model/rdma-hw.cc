@@ -547,12 +547,12 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 		}
 		if (qp->IsFinished()){
 			QpComplete(qp);
+			// std::cout << "RefCountTx " << qp->GetReferenceCount() << std::endl;
 			// Absolute last resort. WHYYYYY is it still 2? Who holds the last reference?
 			while (qp->GetReferenceCount()>=2){
 				qp->Unref();
 			}
 			qp = nullptr;
-			// std::cout << "RefCountTx " << qp->GetReferenceCount() << std::endl;
 			return 0;
 		}
 	}
@@ -735,7 +735,9 @@ void RdmaHw::QpComplete(Ptr<RdmaQueuePair> qp){
 	// It may also delete the rxQp on the receiver
 	m_qpCompleteCallback(qp);
 
-	qp->m_notifyAppFinish();
+	if (!qp->m_notifyAppFinish.IsNull()){
+		qp->m_notifyAppFinish();
+	}
 
 	// delete the qp
 	DeleteQueuePair(qp);
