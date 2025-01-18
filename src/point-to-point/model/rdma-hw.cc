@@ -302,8 +302,14 @@ void RdmaHw::AddQueuePair(uint32_t src, uint32_t dest, uint64_t tag, uint64_t si
 void RdmaHw::DeleteQueuePair(Ptr<RdmaQueuePair> qp){
 	// remove qp from the m_qpMap
 	uint64_t key = GetQpKey(qp->dip.Get(), qp->sport, qp->m_pg);
+	m_qpMap[key] = nullptr;
 	m_qpMap.erase(key);
-	RedistributeQp();
+	uint32_t nic_idx = GetNicIdxOfQp(qp);
+	// remove qp from the qpGrp
+	auto it = std::find(m_nic[nic_idx].qpGrp->m_qps.begin(), m_nic[nic_idx].qpGrp->m_qps.end(), qp);
+	if (it!=m_nic[nic_idx].qpGrp->m_qps.end()){
+		m_nic[nic_idx].qpGrp->m_qps.erase(it);
+	}
 }
 
 Ptr<RdmaRxQueuePair> RdmaHw::GetRxQp(uint32_t sip, uint32_t dip, uint16_t sport, uint16_t dport, uint16_t pg, bool create){
@@ -337,6 +343,7 @@ uint32_t RdmaHw::GetNicIdxOfRxQp(Ptr<RdmaRxQueuePair> q){
 }
 void RdmaHw::DeleteRxQp(uint32_t dip, uint16_t pg, uint16_t dport){
 	uint64_t key = ((uint64_t)dip << 32) | ((uint64_t)pg << 16) | (uint64_t)dport;
+	m_rxQpMap[key]=nullptr;
 	m_rxQpMap.erase(key);
 }
 
@@ -531,9 +538,7 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 			}
 			else{
 				qp->Acknowledge(seq);
-				if (qp->timeout.IsRunning()){
-					qp->timeout.Remove();
-				}
+				qp->timeout.Remove();
 				qp->timeout = Simulator::Schedule(NanoSeconds(rto), &RdmaHw::RecoverQueue, this, qp);
 			}
 		}else {
@@ -542,6 +547,13 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 		}
 		if (qp->IsFinished()){
 			QpComplete(qp);
+			// Absolute last resort. WHYYYYY is it still 2? Who holds the last reference?
+			while (qp->GetReferenceCount()>=2){
+				qp->Unref();
+			}
+			qp = nullptr;
+			// std::cout << "RefCountTx " << qp->GetReferenceCount() << std::endl;
+			return 0;
 		}
 	}
 	if (ch.l3Prot == 0xFD) // NACK
@@ -707,9 +719,8 @@ void RdmaHw::QpComplete(Ptr<RdmaQueuePair> qp){
 		ChangeRate(qp, qp->m_max_rate); 
 	}
 
-	if (qp->timeout.IsRunning()){
-		qp->timeout.Remove();
-	}
+	qp->timeout.Remove();
+
 	// Remove any duplicate packets left over in the inflight queue.
 	// Cancel all associated timers
 	for (auto it = qp->pktsInflight.begin(); it != qp->pktsInflight.end();){
@@ -749,6 +760,7 @@ void RdmaHw::RedistributeQp(){
 		if (!m_nic[i].dev)
 			continue;
 		m_nic[i].qpGrp->Clear();
+		m_nic[i].dev->m_rdmaEQ->m_qpGrp->Clear();
 	}
 
 	// redistribute qp
@@ -756,8 +768,14 @@ void RdmaHw::RedistributeQp(){
 		Ptr<RdmaQueuePair> qp = it.second;
 		uint32_t nic_idx = GetNicIdxOfQp(qp);
 		m_nic[nic_idx].qpGrp->AddQp(qp);
+	}
+
+	for (uint32_t i = 0; i < m_nic.size(); i++){
+		if (!m_nic[i].dev)
+			continue;
+		m_nic[i].dev->m_rdmaEQ->m_qpGrp = m_nic[i].qpGrp;
 		// Notify Nic
-		m_nic[nic_idx].dev->ReassignedQp(qp);
+		m_nic[i].dev->TriggerTransmit();
 	}
 }
 
@@ -854,9 +872,7 @@ Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
 	}
 	else {
 		// One timeout for the entire QP. Every data packet and ack will reset the timer.
-		if (qp->timeout.IsRunning()){
-			qp->timeout.Remove();
-		}
+		qp->timeout.Remove();
 		qp->timeout = Simulator::Schedule(NanoSeconds(rto), &RdmaHw::RecoverQueue, this, qp);
 	}
 

@@ -23,6 +23,8 @@ class UniqueOrderedSet {
     std::deque<int> elements;
 
   public:
+  	~UniqueOrderedSet() = default;
+
     void Insert(int value) {
         if (seen.find(value) == seen.end()) {
             seen.insert(value);
