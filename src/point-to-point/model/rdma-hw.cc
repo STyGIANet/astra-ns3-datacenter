@@ -36,7 +36,7 @@ TypeId RdmaHw::GetTypeId (void)
 				MakeUintegerChecker<uint32_t>())
 		.AddAttribute("NACK_Generation_Interval",
 				"The NACK Generation interval",
-				DoubleValue(500.0),
+				DoubleValue(10000.0),
 				MakeDoubleAccessor(&RdmaHw::m_nack_interval),
 				MakeDoubleChecker<double>())
 		.AddAttribute("L2ChunkSize",
