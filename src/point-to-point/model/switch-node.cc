@@ -126,33 +126,6 @@ int SwitchNode::GetOutDev(Ptr<Packet> p, CustomHeader &ch){
 			ih.SetIdentification(path);
 			p->AddHeader(ih);
 			p->AddHeader(ppp);
-		// }
-		// else{
-		// 	// else fall back to ECMP (for ACK/NACK)
-		// 	PppHeader ppp;
-		// 	Ipv4Header ih;
-		// 	p->RemoveHeader(ppp);
-		// 	p->RemoveHeader(ih);
-		// 	// Use this entropy for one of the 5-tuple values
-		// 	uint32_t entropy = ih.GetIdentification();
-		// 	union {
-		// 		uint8_t u8[4 + 4 + 2 + 2];
-		// 		uint32_t u32[3];
-		// 	} buf;
-		// 	buf.u32[0] = entropy;
-		// 	buf.u32[1] = ch.dip;
-		// 	if (ch.l3Prot == 0x6)
-		// 		buf.u32[2] = ch.tcp.sport | ((uint32_t)ch.tcp.dport << 16);
-		// 	else if (ch.l3Prot == 0x11)
-		// 		buf.u32[2] = ch.udp.sport | ((uint32_t)ch.udp.dport << 16);
-		// 	else if (ch.l3Prot == 0xFC || ch.l3Prot == 0xFD)
-		// 		buf.u32[2] = ch.ack.sport | ((uint32_t)ch.ack.dport << 16);
-
-		// 	p->AddHeader(ih);
-		// 	p->AddHeader(ppp);
-
-		// 	idx = EcmpHash(buf.u8, 12, m_ecmpSeed) % nexthops.size();
-		// }
 	}
 	else if (m_endHostSpray){
 			PppHeader ppp;
@@ -178,14 +151,6 @@ int SwitchNode::GetOutDev(Ptr<Packet> p, CustomHeader &ch){
 			p->AddHeader(ppp);
 
 			idx = EcmpHash(buf.u8, 12, m_ecmpSeed) % nexthops.size();
-			// PppHeader ppp;
-			// Ipv4Header ih;
-			// p->RemoveHeader(ppp);
-			// p->RemoveHeader(ih);
-			// uint32_t path = ih.GetIdentification();
-			// idx = path % nexthops.size();
-			// p->AddHeader(ih);
-			// p->AddHeader(ppp);
 	}
 	else if (m_switchSpray){
 			idx = (rrspray++)%nexthops.size();
@@ -224,6 +189,7 @@ void SwitchNode::CheckAndSendPfc(uint32_t inDev, uint32_t qIndex){
 	if (m_mmu->CheckShouldPause(inDev, qIndex)){
 		device->SendPfc(qIndex, 0);
 		m_mmu->SetPause(inDev, qIndex);
+		// std::cout << "PFC" << std::endl;
 	}
 }
 void SwitchNode::CheckAndSendResume(uint32_t inDev, uint32_t qIndex){
@@ -256,6 +222,7 @@ void SwitchNode::SendToDev(Ptr<Packet>p, CustomHeader &ch){
 				m_mmu->UpdateIngressAdmission(inDev, qIndex, p->GetSize());
 				m_mmu->UpdateEgressAdmission(idx, qIndex, p->GetSize());
 			}else{
+				std::cout << "Drop " << std::endl;
 				return; // Drop
 			}
 			CheckAndSendPfc(inDev, qIndex);
@@ -264,6 +231,7 @@ void SwitchNode::SendToDev(Ptr<Packet>p, CustomHeader &ch){
 		m_devices[idx]->SwitchSend(qIndex, p, ch);
 	}else
 	{
+		std::cout << "Drop " << std::endl;
 		return; // Drop
 	}
 }

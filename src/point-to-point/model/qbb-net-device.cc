@@ -118,28 +118,29 @@ namespace ns3 {
 				int tag = qp->GetTag();
 				int t_count = qp->GetInitialSize();
 			}
-			if (!paused[qp->m_pg] && qp->GetBytesLeft() > 0 && !qp->IsWinBound()){
+			if ( ( (!paused[qp->m_pg] && qp->GetBytesLeft() > 0) || (!qp->retransmitQueue.empty()) ) && !qp->IsWinBound()){
 				if (m_qpGrp->Get(idx)->m_nextAvail.GetTimeStep() > Simulator::Now().GetTimeStep()) //not available now
 					continue;
 				res = idx;
 				break;
-			}else if (qp->IsFinished()){
-				min_finish_id = idx < min_finish_id ? idx : min_finish_id;
 			}
+			// else if (qp->IsFinished()){
+			// 	min_finish_id = idx < min_finish_id ? idx : min_finish_id;
+			// }
 		}
 
-		// clear the finished qp
-		if (min_finish_id < 0xffffffff){
-			int nxt = min_finish_id;
-			auto &qps = m_qpGrp->m_qps;
-			for (int i = min_finish_id + 1; i < fcount; i++) if (!qps[i]->IsFinished()){
-				if (i == res) // update res to the idx after removing finished qp
-					res = nxt;
-				qps[nxt] = qps[i];
-				nxt++;
-			}
-			qps.resize(nxt);
-		}
+		// // clear the finished qp
+		// if (min_finish_id < 0xffffffff){
+		// 	int nxt = min_finish_id;
+		// 	auto &qps = m_qpGrp->m_qps;
+		// 	for (int i = min_finish_id + 1; i < fcount; i++) if (!qps[i]->IsFinished()){
+		// 		if (i == res) // update res to the idx after removing finished qp
+		// 			res = nxt;
+		// 		qps[nxt] = qps[i];
+		// 		nxt++;
+		// 	}
+		// 	qps.resize(nxt);
+		// }
 		return res;
 	}
 
@@ -355,6 +356,7 @@ namespace ns3 {
 	{
 		NS_LOG_FUNCTION(this << qIndex);
 		NS_ASSERT_MSG(m_paused[qIndex], "Must be PAUSEd");
+		m_tracePfc(0);
 		m_paused[qIndex] = false;
 		NS_LOG_INFO("Node " << m_node->GetId() << " dev " << m_ifIndex << " queue " << qIndex <<
 			" resumed at " << Simulator::Now().GetSeconds());
@@ -390,8 +392,8 @@ namespace ns3 {
 			if (ch.pfc.time > 0){
 				m_tracePfc(1);
 				m_paused[qIndex] = true;
+				// Simulator::Schedule(MicroSeconds(ch.pfc.time), &QbbNetDevice::Resume, this, qIndex);
 			}else{
-				m_tracePfc(0);
 				Resume(qIndex);
 			}
 		}else { // non-PFC packets (data, ACK, NACK, CNP...)

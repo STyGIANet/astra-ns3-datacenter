@@ -310,6 +310,7 @@ void RdmaHw::DeleteQueuePair(Ptr<RdmaQueuePair> qp){
 	if (it!=m_nic[nic_idx].qpGrp->m_qps.end()){
 		m_nic[nic_idx].qpGrp->m_qps.erase(it);
 	}
+	m_nic[nic_idx].dev->m_rdmaEQ->m_qpGrp = m_nic[nic_idx].qpGrp;
 }
 
 Ptr<RdmaRxQueuePair> RdmaHw::GetRxQp(uint32_t sip, uint32_t dip, uint16_t sport, uint16_t dport, uint16_t pg, bool create){
@@ -527,6 +528,11 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 				// in the retransmit queue.
 				for (auto it = qp->pktsInflight.begin(); it != qp->pktsInflight.end();){
 					if (std::get<1>(it->second) == true){
+						// std::cout << "pktsInflight " << qp->pktsInflight.size() 
+						// 					<< " Acking "  << it->first 
+						// 					<< " src " << qp->m_src 
+						// 					<< " dst " << qp->m_dest 
+						// 					<< std::endl;
 						qp->Acknowledge(it->first);
 						std::get<2>(it->second).Remove(); // cancel the timeout;
 						it = qp->pktsInflight.erase(it);
@@ -545,16 +551,6 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 			uint32_t goback_seq = seq / m_chunk * m_chunk;
 			qp->Acknowledge(goback_seq);
 		}
-		if (qp->IsFinished()){
-			QpComplete(qp);
-			// std::cout << "RefCountTx " << qp->GetReferenceCount() << std::endl;
-			// Absolute last resort. WHYYYYY is it still 2? Who holds the last reference?
-			while (qp->GetReferenceCount()>=2){
-				qp->Unref();
-			}
-			qp = nullptr;
-			return 0;
-		}
 	}
 	if (ch.l3Prot == 0xFD) // NACK
 		RecoverQueue(qp);
@@ -572,9 +568,7 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 		Ipv4Header ihh; cp->RemoveHeader(ihh);
 		uint32_t entropy = ihh.GetIdentification();
 		if (cnp){
-			if (entropy == qp->cachedEntropy.Get()){
-				qp->cachedEntropy.Remove();
-			}
+			qp->cachedEntropy.Remove();
 		}
 		else{
 			qp->cachedEntropy.Insert(entropy);
@@ -590,6 +584,11 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 	}else if (m_cc_mode == 10){
 		HandleAckHpPint(qp, p, ch);
 	}
+
+	if (qp->IsFinished()){
+		QpComplete(qp);
+	}
+
 	// ACK may advance the on-the-fly window, allowing more packets to send
 	dev->TriggerTransmit();
 	//std:://cout << "ack triggere transmitted\n";
@@ -610,66 +609,58 @@ int RdmaHw::Receive(Ptr<Packet> p, CustomHeader &ch){
 }
 
 int RdmaHw::ReceiverCheckSeq(uint32_t seq, Ptr<RdmaRxQueuePair> q, uint32_t size){
-	uint32_t expected = q->ReceiverNextExpectedSeq;
 
-	auto x = q->reOrderBuffer.begin();
-	if (x != q->reOrderBuffer.end() && (x->first == expected || seq == expected)) {
-		for (auto it = q->reOrderBuffer.begin(); it != q->reOrderBuffer.end();){
-			if (it->first == q->ReceiverNextExpectedSeq){
-				q->ReceiverNextExpectedSeq += it->second;
-				it = q->reOrderBuffer.erase(it);
-				q->m_lastNACK = 0; // reset NACK interval
-				// std::cout << "restting NACK interval" << std::endl;
-			}
-			else{
-				break;
-			}
-		}
+	if (m_reps || m_endHostSpray){
+		// Important: Sender expects per packet acknowledgment i.e., expects acknowledgment for EACH seq num.
+		// No Nacks currently. Due to multipath, they rely on per-packet timers at the sender for retransmissions.
+
+		// // First, check if seq fills any holes in the reorder buffer
+		// q->reOrderBuffer[seq] = size;
+		// auto x = q->reOrderBuffer.begin();
+		// for (auto it = q->reOrderBuffer.begin(); it != q->reOrderBuffer.end();){
+		// 	if (it->first == q->ReceiverNextExpectedSeq){
+		// 		q->ReceiverNextExpectedSeq += it->second;
+		// 		it = q->reOrderBuffer.erase(it);
+		// 		q->m_lastNACK = 0; // reset NACK interval
+		// 		// std::cout << "restting NACK interval" << std::endl;
+		// 	}
+		// 	else{
+		// 		break;
+		// 	}
+		// }
+		// NACKs can potentially be implemented based on the reorder buffer.
+		return 8; // Acknowledge the specific seq num.
 	}
 
-	if (seq == expected){
-		if (q->ReceiverNextExpectedSeq == expected){ 
-			// reorder buffer did not change anything. So, we are ok to increment as usual.
+	else{
+		uint32_t expected = q->ReceiverNextExpectedSeq;
+		if (seq == expected){
 			q->ReceiverNextExpectedSeq = expected + size;
-		}
-		if (q->ReceiverNextExpectedSeq >= q->m_milestone_rx){
-			q->m_milestone_rx += m_ack_interval;
-			return 1; //Generate ACK
-		}else if (q->ReceiverNextExpectedSeq % m_chunk == 0){
-			return 1;
+			if (q->ReceiverNextExpectedSeq >= q->m_milestone_rx){
+				q->m_milestone_rx += m_ack_interval;
+				return 1; //Generate ACK
+			}else if (q->ReceiverNextExpectedSeq % m_chunk == 0){
+				return 1;
+			}else {
+				return 5;
+			}
+		} else if (seq > expected) {
+			// Generate NACK
+			if (Simulator::Now() >= q->m_nackTimer || q->m_lastNACK != expected){
+				q->m_nackTimer = Simulator::Now() + MicroSeconds(m_nack_interval);
+				q->m_lastNACK = expected;
+				if (m_backto0){
+					q->ReceiverNextExpectedSeq = q->ReceiverNextExpectedSeq / m_chunk*m_chunk;
+				}
+				return 2;
+			}else
+				return 4;
 		}else {
-			return 5;
+			// Duplicate.
+			return 3;
 		}
-	} else if (seq > expected) {
-		// Generate NACK
-		if (m_reps || m_endHostSpray){
-			q->reOrderBuffer[seq] = size;
-
-			if (Simulator::Now() >= q->m_nackTimer && (q->m_lastNACK!=0 && q->m_lastNACK!= expected)){
-				q->m_nackTimer = Simulator::Now() + MicroSeconds(m_nack_interval);
-				q->m_lastNACK = expected;
-				// std::cout << "NACK Triggered" << std::endl;
-				return 2; // Send NACK
-			}
-			else if (q->m_lastNACK==0){
-				q->m_nackTimer = Simulator::Now() + MicroSeconds(m_nack_interval);
-				q->m_lastNACK = expected;
-			}
-			return 8; //Ack just for corresponding seq
-		}
-		else if (Simulator::Now() >= q->m_nackTimer || q->m_lastNACK != expected){
-			q->m_nackTimer = Simulator::Now() + MicroSeconds(m_nack_interval);
-			q->m_lastNACK = expected;
-			if (m_backto0){
-				q->ReceiverNextExpectedSeq = q->ReceiverNextExpectedSeq / m_chunk*m_chunk;
-			}
-			return 2;
-		}else
-			return 4;
-	}else {
-		// Duplicate.
-		return 3;
 	}
+
 }
 void RdmaHw::AddHeader (Ptr<Packet> p, uint16_t protocolNumber){
 	PppHeader ppp;
@@ -805,7 +796,10 @@ Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
 	// add SeqTsHeader
 	SeqTsHeader seqTs;
 	seqTs.SetSeq (seqNum);
-	seqTs.SetPG (qp->m_pg);
+	if (!retransmit)
+		seqTs.SetPG (qp->m_pg);
+	else
+		seqTs.SetPG (0); // Give high priority for retransmissions
 	p->AddHeader (seqTs);
 	// add udp header
 	UdpHeader udpHeader;
@@ -885,7 +879,7 @@ Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
 // STyGIANet
 void RdmaHw::RetransmitPacket(Ptr<RdmaQueuePair> qp, uint32_t expectedAckSeq){
 	if (m_reps || m_endHostSpray){
-		// std::cout << "retransmit" << std::endl;
+		std::cout << "retransmit" << std::endl;
 		// expectedAckSeq - payloadsize gives the sequence number from the sender perspective.
 		uint32_t payload_size = std::get<0>(qp->pktsInflight[expectedAckSeq]);
 		std::get<2>(qp->pktsInflight[expectedAckSeq]).Remove();
@@ -1369,6 +1363,8 @@ void RdmaHw::HandleAckDctcp(Ptr<RdmaQueuePair> qp, Ptr<Packet> p, CustomHeader &
 	// additive inc
 	if (qp->dctcp.m_caState == 0 && new_batch)
 		qp->m_rate = std::min(qp->m_max_rate, qp->m_rate + m_dctcp_rai);
+
+	ChangeRate(qp, qp->m_rate);
 }
 
 /*********************

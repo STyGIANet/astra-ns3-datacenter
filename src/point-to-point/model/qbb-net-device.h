@@ -66,6 +66,7 @@ public:
 
 	TracedCallback<Ptr<const Packet>, uint32_t> m_traceRdmaEnqueue;
 	TracedCallback<Ptr<const Packet>, uint32_t> m_traceRdmaDequeue;
+  TracedCallback<Ptr<Packet>> m_QpComplete;
 };
 
 /**
