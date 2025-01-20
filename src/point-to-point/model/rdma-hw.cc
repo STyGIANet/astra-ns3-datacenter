@@ -796,10 +796,7 @@ Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
 	// add SeqTsHeader
 	SeqTsHeader seqTs;
 	seqTs.SetSeq (seqNum);
-	if (!retransmit)
-		seqTs.SetPG (qp->m_pg);
-	else
-		seqTs.SetPG (0); // Give high priority for retransmissions
+	seqTs.SetPG (qp->m_pg);
 	p->AddHeader (seqTs);
 	// add udp header
 	UdpHeader udpHeader;
@@ -879,7 +876,7 @@ Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
 // STyGIANet
 void RdmaHw::RetransmitPacket(Ptr<RdmaQueuePair> qp, uint32_t expectedAckSeq){
 	if (m_reps || m_endHostSpray){
-		std::cout << "retransmit" << std::endl;
+		// std::cout << "retransmit" << std::endl;
 		// expectedAckSeq - payloadsize gives the sequence number from the sender perspective.
 		uint32_t payload_size = std::get<0>(qp->pktsInflight[expectedAckSeq]);
 		std::get<2>(qp->pktsInflight[expectedAckSeq]).Remove();
