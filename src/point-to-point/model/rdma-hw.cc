@@ -587,6 +587,12 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 
 	if (qp->IsFinished()){
 		QpComplete(qp);
+				// std::cout << "RefCountTx " << qp->GetReferenceCount() << std::endl;
+		// Absolute last resort. WHYYYYY is it still 2? Who holds the last reference?
+		while (qp->GetReferenceCount()>=2){
+			qp->Unref();
+		}
+		qp = nullptr;
 	}
 
 	// ACK may advance the on-the-fly window, allowing more packets to send
