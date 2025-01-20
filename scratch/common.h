@@ -104,7 +104,7 @@ uint32_t source_routing = 0;
 uint32_t end_host_spray = 0;
 uint32_t reps = 0;
 uint64_t rto = 100*1000; // 100 micro seconds by default
-
+uint64_t multipath_rto = 100*1000;
 
 uint64_t nic_rate;
 
@@ -767,6 +767,10 @@ ReadConf(string network_configuration)
         {
             conf >> rto;
         }
+        else if (key.compare("MULTIPATHTIMEOUT")==0)
+        {
+            conf >> multipath_rto;
+        }
         else if (key.compare("STPRIO") == 0)
         {
             conf >> stprio;
@@ -982,7 +986,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         if (n.Get(i)->GetNodeType() == 1)
         { // is switch
             Ptr<SwitchNode> sw = DynamicCast<SwitchNode>(n.Get(i));
-            uint32_t shift = 3; // by default 1/8
+            uint32_t shift = 0; // by default 1/8
 
             for (uint32_t j = 1; j < sw->GetNDevices(); j++)
             {
@@ -1072,7 +1076,10 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             rdmaHw->SetAttribute("sourceRouting", BooleanValue(source_routing==1));
             rdmaHw->SetAttribute("endHostSpray", BooleanValue(end_host_spray==1));
             rdmaHw->SetAttribute("reps", BooleanValue(reps==1));
-            rdmaHw->SetAttribute("rto", UintegerValue(rto));
+            if (reps==1)
+                rdmaHw->SetAttribute("rto", UintegerValue(multipath_rto));
+            else
+                rdmaHw->SetAttribute("rto", UintegerValue(rto));
 
             // create and install RdmaDriver
             Ptr<RdmaDriver> rdma = CreateObject<RdmaDriver>();
