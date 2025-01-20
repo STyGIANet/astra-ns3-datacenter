@@ -222,7 +222,7 @@ void SwitchNode::SendToDev(Ptr<Packet>p, CustomHeader &ch){
 				m_mmu->UpdateIngressAdmission(inDev, qIndex, p->GetSize());
 				m_mmu->UpdateEgressAdmission(idx, qIndex, p->GetSize());
 			}else{
-				std::cout << "Drop " << std::endl;
+				// std::cout << "Drop " << std::endl;
 				return; // Drop
 			}
 			CheckAndSendPfc(inDev, qIndex);
@@ -231,7 +231,7 @@ void SwitchNode::SendToDev(Ptr<Packet>p, CustomHeader &ch){
 		m_devices[idx]->SwitchSend(qIndex, p, ch);
 	}else
 	{
-		std::cout << "Drop " << std::endl;
+		// std::cout << "Drop " << std::endl;
 		return; // Drop
 	}
 }
