@@ -702,16 +702,30 @@ void RdmaHw::RecoverQueue(Ptr<RdmaQueuePair> qp){
 		if(m_sourceRouting){
 			m_notifyLinkFailure(qp->pathId, qp->m_dest);
 			// Pick a random path
-			uint16_t a = m_rand->GetInteger(0, maxSwitchPorts);
-			uint16_t b = m_rand->GetInteger(0, maxSwitchPorts);
-			uint32_t c = (a << 8) | b;
+			// uint16_t a = m_rand->GetInteger(0, maxSwitchPorts-1);
+			// uint16_t b = m_rand->GetInteger(0, maxSwitchPorts-1);
+			uint16_t a = qp->pathId & 0x00FF;
+			uint16_t b = qp->pathId >> 8;
+			std::vector<uint16_t> portsT1;
+			std::vector<uint16_t> portsT2;
+			for (uint16_t i = 0; i < maxSwitchPorts; i++){
+				if (i != a){
+					portsT1.push_back(i);
+				}
+				if (i != b){
+					portsT2.push_back(i);
+				}
+			}
+			a = portsT1[m_rand->GetInteger(0, portsT1.size()-1)];
+			b = portsT2[m_rand->GetInteger(0, portsT2.size()-1)];
+			uint32_t c = (b << 8) | a;
 			qp->pathId = c;
 		}
 	}
 	// Allow retransmission in case this QP is dead currently.
-	// ChangeRate(qp, qp->m_max_rate);
-	// uint32_t nic_idx = GetNicIdxOfQp(qp);
-	// m_nic[nic_idx].dev->TriggerTransmit();
+	ChangeRate(qp, qp->m_max_rate);
+	uint32_t nic_idx = GetNicIdxOfQp(qp);
+	m_nic[nic_idx].dev->TriggerTransmit();
 }
 
 void RdmaHw::QpComplete(Ptr<RdmaQueuePair> qp){
@@ -873,7 +887,7 @@ Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
 			// std::cout << "retransmit" << std::endl;
 			std::get<2>(qp->pktsInflight[seqNum + payload_size]).Remove(); // cancel the timeout
 			uint32_t backoff_exp = std::get<3>(qp->pktsInflight[seqNum + payload_size]);
-			std::get<3>(qp->pktsInflight[seqNum + payload_size]) = backoff_exp << 1; // exponential backoff
+			std::get<3>(qp->pktsInflight[seqNum + payload_size]) = backoff_exp ; //<< 1; // exponential backoff
 			EventId timeoutEvent = Simulator::Schedule(NanoSeconds(backoff_exp*rto), &RdmaHw::RetransmitPacket, this, qp, seqNum + payload_size);
 			std::get<2>(qp->pktsInflight[seqNum + payload_size]) = timeoutEvent; // update the timeout event
 		}
@@ -905,6 +919,10 @@ void RdmaHw::RetransmitPacket(Ptr<RdmaQueuePair> qp, uint32_t expectedAckSeq){
 			// Remove the oldest cached entropy
 			qp->cachedEntropy.Remove();
 		}
+		// Allow retransmission in case this QP is dead currently.
+		ChangeRate(qp, qp->m_max_rate);
+		uint32_t nic_idx = GetNicIdxOfQp(qp);
+		m_nic[nic_idx].dev->TriggerTransmit();
 	}
 	return;
 }
