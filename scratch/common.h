@@ -1270,7 +1270,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
     if (link_failure > 0)
     {   
         // Fail a link between the first ToR and the first spine
-        Simulator::Schedule(Seconds(2) + MicroSeconds(link_down_time),
+        Simulator::Schedule(MicroSeconds(1),
                             &linkFailure,
                             n,
                             n.Get(node_num - switch_num), // First Tor
