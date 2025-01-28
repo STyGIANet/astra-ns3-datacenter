@@ -116,6 +116,8 @@ std::vector<Ipv4Address> serverAddress;
 // std::unordered_map<uint32_t, unordered_map<uint32_t, uint16_t>> portNumber;
 std::vector<std::vector<uint16_t>> portNumber;
 
+uint32_t link_failure = 0; // Whether to simulate link failure
+
 struct Interface
 {
     uint32_t idx;
@@ -355,7 +357,7 @@ CalculateRoutes(NodeContainer& n)
 }
 
 void
-SetRoutingEntries()
+SetRoutingEntries(bool afterFailure)
 {
     for (auto i = nextHop.begin(); i != nextHop.end(); i++)
     {
@@ -370,14 +372,60 @@ SetRoutingEntries()
             {
                 Ptr<Node> next = nexts[k];
                 uint32_t interface = nbr2if[node][next].idx;
-                if (node->GetNodeType() == 1)
-                    DynamicCast<SwitchNode>(node)->AddTableEntry(dstAddr, interface);
+                if (node->GetNodeType() == 1){
+                    if (afterFailure){
+                        DynamicCast<SwitchNode>(node)->AddTableEntryAfterFailure(dstAddr, interface);
+                    }
+                    else{
+                        DynamicCast<SwitchNode>(node)->AddTableEntry(dstAddr, interface);
+                    }
+                }
                 else
                 {
                     node->GetObject<RdmaDriver>()->m_rdma->AddTableEntry(dstAddr, interface);
                 }
             }
         }
+    }
+}
+
+void
+linkFailure(NodeContainer n, Ptr<Node> a, Ptr<Node> b)
+{
+    if (!nbr2if[a][b].up)
+        return;
+    // take down link between a and b
+    nbr2if[a][b].up = nbr2if[b][a].up = false;
+    // Set the port down on the switch
+    if (a->GetNodeType() >= 1){
+        DynamicCast<SwitchNode>(a)->failedIntfs.push_back(nbr2if[a][b].idx);
+    }
+    if (b->GetNodeType() >= 1){
+        DynamicCast<SwitchNode>(b)->failedIntfs.push_back(nbr2if[b][a].idx);
+    }
+    nextHop.clear();
+    CalculateRoutes(n);
+    // clear routing tables
+    for (uint32_t i = 0; i < n.GetN(); i++)
+    {
+        if (n.Get(i)->GetNodeType() == 1){
+            // Don't clear the initial routing table here.
+            // DynamicCast<SwitchNode>(n.Get(i))->ClearTable();
+        }
+        else{
+            n.Get(i)->GetObject<RdmaDriver>()->m_rdma->ClearTable();
+        }
+    }
+    DynamicCast<QbbNetDevice>(a->GetDevice(nbr2if[a][b].idx))->TakeDown();
+    DynamicCast<QbbNetDevice>(b->GetDevice(nbr2if[b][a].idx))->TakeDown();
+    // reset routing table after 100 milliseconds
+    Simulator::Schedule(MilliSeconds(100), &SetRoutingEntries, true);
+
+    // redistribute qp on each host
+    for (uint32_t i = 0; i < n.GetN(); i++)
+    {
+        if (n.Get(i)->GetNodeType() == 0)
+            n.Get(i)->GetObject<RdmaDriver>()->m_rdma->RedistributeQp();
     }
 }
 
@@ -402,7 +450,7 @@ TakeDownLink(NodeContainer n, Ptr<Node> a, Ptr<Node> b)
     DynamicCast<QbbNetDevice>(a->GetDevice(nbr2if[a][b].idx))->TakeDown();
     DynamicCast<QbbNetDevice>(b->GetDevice(nbr2if[b][a].idx))->TakeDown();
     // reset routing table
-    SetRoutingEntries();
+    SetRoutingEntries(false);
 
     // redistribute qp on each host
     for (uint32_t i = 0; i < n.GetN(); i++)
@@ -1080,6 +1128,8 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
                 rdmaHw->SetAttribute("rto", UintegerValue(multipath_rto));
             else
                 rdmaHw->SetAttribute("rto", UintegerValue(rto));
+            if (source_routing)
+                rdmaHw->maxSwitchPorts = t1l;
 
             // create and install RdmaDriver
             Ptr<RdmaDriver> rdma = CreateObject<RdmaDriver>();
@@ -1105,7 +1155,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
 
     // setup routing
     CalculateRoutes(n);
-    SetRoutingEntries();
+    SetRoutingEntries(false);
 
     //
     // get BDP and delay
@@ -1215,6 +1265,16 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
                             n,
                             n.Get(link_down_A),
                             n.Get(link_down_B));
+    }
+    // Schedule link failure from command line
+    if (link_failure > 0)
+    {   
+        // Fail a link between the first ToR and the first spine
+        Simulator::Schedule(Seconds(2) + MicroSeconds(link_down_time),
+                            &linkFailure,
+                            n,
+                            n.Get(node_num - switch_num), // First Tor
+                            n.Get(node_num - switch_num + allTors)); // First spine or agg.
     }
 
     // schedule buffer monitor

@@ -105,7 +105,7 @@ int SwitchNode::GetOutDev(Ptr<Packet> p, CustomHeader &ch){
 	else if (ch.l3Prot == 0xFC || ch.l3Prot == 0xFD)
 		buf.u32[2] = ch.ack.sport | ((uint32_t)ch.ack.dport << 16);
 
-	uint32_t idx = EcmpHash(buf.u8, 12, m_ecmpSeed) % nexthops.size();
+	uint32_t idx = EcmpHash(buf.u8, 12, m_ecmpSeed);
 	// STyGIANet
 	if (m_sourceRouting){
 		// if (ch.l3Prot == 0x11) {
@@ -150,7 +150,7 @@ int SwitchNode::GetOutDev(Ptr<Packet> p, CustomHeader &ch){
 			p->AddHeader(ih);
 			p->AddHeader(ppp);
 
-			idx = EcmpHash(buf.u8, 12, m_ecmpSeed) % nexthops.size();
+			idx = EcmpHash(buf.u8, 12, m_ecmpSeed);
 	}
 	else if (m_switchSpray){
 			idx = (rrspray++)%nexthops.size();
@@ -178,10 +178,28 @@ int SwitchNode::GetOutDev(Ptr<Packet> p, CustomHeader &ch){
 		p->AddHeader(ih);
 		p->AddHeader(ppp);
 
-		idx = EcmpHash(buf.u8, 12, m_ecmpSeed) % nexthops.size();
+		idx = EcmpHash(buf.u8, 12, m_ecmpSeed);
+	}
+	// STyGIANet
+	// This mimicks resilient hashing but only works for a single failed port at the moment.
+	if (std::find(failedIntfs.begin(), failedIntfs.end(), nexthops[idx % nexthops.size()]) != failedIntfs.end()){
+		auto entryAfterFailure = m_rtTableFailure.find(ch.dip);
+
+		// After a link failure event, we will not reset the default routing table.
+		// Flow hashes will still be indexed based on the default routing table.
+		// Only upon hitting a failed port, we will look up the flow in the failure routing table.
+		// Typically, switches take upto 100ms to update the routing table.
+		// A routing entry for failed path appears in the failure routing table after 100ms.
+		// Until then, the switch drops all the packets.
+		if (entryAfterFailure == m_rtTableFailure.end())
+			return -1;
+
+		auto &nexthopsAfterFailure = entryAfterFailure->second;
+
+		return nexthopsAfterFailure[idx % nexthopsAfterFailure.size()];
 	}
 
-	return nexthops[idx];
+	return nexthops[idx % nexthops.size()];
 }
 
 void SwitchNode::CheckAndSendPfc(uint32_t inDev, uint32_t qIndex){
@@ -281,6 +299,11 @@ void SwitchNode::SetEcmpSeed(uint32_t seed){
 void SwitchNode::AddTableEntry(Ipv4Address &dstAddr, uint32_t intf_idx){
 	uint32_t dip = dstAddr.Get();
 	m_rtTable[dip].push_back(intf_idx);
+}
+
+void SwitchNode::AddTableEntryAfterFailure(Ipv4Address &dstAddr, uint32_t intf_idx){
+	uint32_t dip = dstAddr.Get();
+	m_rtTableFailure[dip].push_back(intf_idx);
 }
 
 void SwitchNode::ClearTable(){

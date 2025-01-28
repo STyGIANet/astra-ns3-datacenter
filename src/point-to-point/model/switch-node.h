@@ -6,6 +6,7 @@
 #include "qbb-net-device.h"
 #include "switch-mmu.h"
 #include "pint.h"
+#include <vector>
 
 namespace ns3 {
 
@@ -25,7 +26,7 @@ class SwitchNode : public Node{
 	uint32_t m_lastPktSize[pCnt];
 	uint64_t m_lastPktTs[pCnt]; // ns
 	double m_u[pCnt];
-
+	std::unordered_map<uint32_t, std::vector<int> > m_rtTableFailure;
 protected:
 	bool m_ecnEnabled;
 	uint32_t m_ccMode;
@@ -53,10 +54,12 @@ public:
 	SwitchNode();
 	void SetEcmpSeed(uint32_t seed);
 	void AddTableEntry(Ipv4Address &dstAddr, uint32_t intf_idx);
+	void AddTableEntryAfterFailure(Ipv4Address &dstAddr, uint32_t intf_idx);
 	void ClearTable();
 	bool SwitchReceiveFromDevice(Ptr<NetDevice> device, Ptr<Packet> packet, CustomHeader &ch);
 	void SwitchNotifyDequeue(uint32_t ifIndex, uint32_t qIndex, Ptr<Packet> p);
 
+	std::vector<uint32_t> failedIntfs;
 	// for approximate calc in PINT
 	int logres_shift(int b, int l);
 	int log2apprx(int x, int b, int m, int l); // given x of at most b bits, use most significant m bits of x, calc the result in l bits

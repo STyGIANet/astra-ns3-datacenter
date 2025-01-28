@@ -171,6 +171,8 @@ public:
 	Ptr<UniformRandomVariable> m_rand;
 
 	void RetransmitPacket(Ptr<RdmaQueuePair> qp, uint32_t expectedAckSeq);
+
+	uint32_t maxSwitchPorts;
 };
 
 } /* namespace ns3 */

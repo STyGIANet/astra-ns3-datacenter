@@ -81,6 +81,8 @@ public:
 	UniqueOrderedSet cachedEntropy;
 	uint32_t maxQps = 0;
 
+	uint32_t pathId;
+
 	// reorder buffers for restransmission
 	EventId timeout;
 	std::map<uint32_t, std::tuple<uint32_t,bool, EventId, uint32_t>> pktsInflight; // expectedAckNum, tuple(pktsize, acked, EventId, numTimeouts)

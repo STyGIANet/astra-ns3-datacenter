@@ -275,6 +275,8 @@ void RdmaHw::AddQueuePair(uint32_t src, uint32_t dest, uint64_t tag, uint64_t si
 	uint64_t key = GetQpKey(dip.Get(), sport, pg);
 	m_qpMap[key] = qp;
 
+	qp->pathId = dport;
+
 	// set init variables
 	DataRate m_bps = m_nic[nic_idx].dev->GetDataRate();
 	qp->m_rate = m_bps;
@@ -697,7 +699,14 @@ void RdmaHw::RecoverQueue(Ptr<RdmaQueuePair> qp){
 		// std::cout << "timeout at node " << m_node->GetId() << std::endl;
 		// This is used for Ethereal, and for any application-level load balancing
 		// Here, we assume that dport is being used for source routing to indicate uplink.
-		m_notifyLinkFailure(qp->dport, qp->m_dest);
+		if(m_sourceRouting){
+			m_notifyLinkFailure(qp->pathId, qp->m_dest);
+			// Pick a random path
+			uint16_t a = m_rand->GetInteger(0, maxSwitchPorts);
+			uint16_t b = m_rand->GetInteger(0, maxSwitchPorts);
+			uint32_t c = (a << 16) | b;
+			qp->pathId = a;
+		}
 	}
 	// Allow retransmission in case this QP is dead currently.
 	// ChangeRate(qp, qp->m_max_rate);
@@ -818,7 +827,7 @@ Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
 	ipHeader.SetTtl (64);
 	ipHeader.SetTos (0);
 	if (m_sourceRouting){
-		ipHeader.SetIdentification (qp->dport);
+		ipHeader.SetIdentification (qp->pathId);
 	}
 	else if (m_endHostSpray){
 		ipHeader.SetIdentification (qp->m_ipid);
