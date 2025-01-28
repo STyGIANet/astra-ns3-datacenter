@@ -405,28 +405,27 @@ linkFailure(NodeContainer n, Ptr<Node> a, Ptr<Node> b)
     }
     nextHop.clear();
     CalculateRoutes(n);
-    // clear routing tables
-    for (uint32_t i = 0; i < n.GetN(); i++)
-    {
-        if (n.Get(i)->GetNodeType() == 1){
-            // Don't clear the initial routing table here.
-            // DynamicCast<SwitchNode>(n.Get(i))->ClearTable();
-        }
-        else{
-            n.Get(i)->GetObject<RdmaDriver>()->m_rdma->ClearTable();
-        }
-    }
+    // // Don't clear the initial routing table here.
+    // for (uint32_t i = 0; i < n.GetN(); i++)
+    // {
+    //     if (n.Get(i)->GetNodeType() == 1){
+    //         DynamicCast<SwitchNode>(n.Get(i))->ClearTable();
+    //     }
+    //     else{
+    //         n.Get(i)->GetObject<RdmaDriver>()->m_rdma->ClearTable();
+    //     }
+    // }
     DynamicCast<QbbNetDevice>(a->GetDevice(nbr2if[a][b].idx))->TakeDown();
     DynamicCast<QbbNetDevice>(b->GetDevice(nbr2if[b][a].idx))->TakeDown();
     // reset routing table after 100 milliseconds
     Simulator::Schedule(MilliSeconds(100), &SetRoutingEntries, true);
 
     // redistribute qp on each host
-    for (uint32_t i = 0; i < n.GetN(); i++)
-    {
-        if (n.Get(i)->GetNodeType() == 0)
-            n.Get(i)->GetObject<RdmaDriver>()->m_rdma->RedistributeQp();
-    }
+    // for (uint32_t i = 0; i < n.GetN(); i++)
+    // {
+    //     if (n.Get(i)->GetNodeType() == 0)
+    //         n.Get(i)->GetObject<RdmaDriver>()->m_rdma->RedistributeQp();
+    // }
 }
 
 // take down the link between a and b, and redo the routing
@@ -1275,6 +1274,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
                             n,
                             n.Get(node_num - switch_num), // First Tor
                             n.Get(node_num - switch_num + allTors)); // First spine or agg.
+        std::cout << node_num - switch_num << " " << node_num - switch_num + allTors << std::endl;
     }
 
     // schedule buffer monitor
