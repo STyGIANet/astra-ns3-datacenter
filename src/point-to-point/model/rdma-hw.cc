@@ -704,8 +704,8 @@ void RdmaHw::RecoverQueue(Ptr<RdmaQueuePair> qp){
 			// Pick a random path
 			uint16_t a = m_rand->GetInteger(0, maxSwitchPorts);
 			uint16_t b = m_rand->GetInteger(0, maxSwitchPorts);
-			uint32_t c = (a << 16) | b;
-			qp->pathId = a;
+			uint32_t c = (a << 8) | b;
+			qp->pathId = c;
 		}
 	}
 	// Allow retransmission in case this QP is dead currently.
