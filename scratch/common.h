@@ -26,6 +26,7 @@
 #include "ns3/packet.h"
 #include "ns3/point-to-point-helper.h"
 #include "ns3/qbb-helper.h"
+#include <ns3/ocs-node.h>
 #include <ns3/rdma-client-helper.h>
 #include <ns3/rdma-client.h>
 #include <ns3/rdma-driver.h>
@@ -35,9 +36,11 @@
 
 #include <fstream>
 #include <iostream>
+#include <json/json.hpp>
 #include <time.h>
 #include <unordered_map>
 
+using json = nlohmann::json;
 using namespace ns3;
 using namespace std;
 
@@ -48,6 +51,7 @@ bool enable_qcn = true, use_dynamic_pfc_threshold = true;
 uint32_t packet_payload_size = 1000, l2_chunk_size = 0, l2_ack_interval = 0;
 double pause_time = 5, simulator_stop_time = 3.01;
 std::string topology_file, flow_file, trace_file, trace_output_file;
+std::string topology_file_format = "standard"; // classic text-based format
 std::string fct_output_file = "fct.txt";
 std::string pfc_output_file = "pfc.txt";
 
@@ -540,6 +544,12 @@ ReadConf(string network_configuration)
             conf >> v;
             topology_file = v;
         }
+        else if (key.compare("TOPOLOGY_FILE_FORMAT") == 0)
+        {
+            std::string v;
+            conf >> v;
+            topology_file_format = v;
+        }
         else if (key.compare("FLOW_FILE") == 0)
         {
             std::string v;
@@ -798,23 +808,23 @@ ReadConf(string network_configuration)
         {
             conf >> pint_prob;
         }
-        else if (key.compare("SOURCE_ROUTING")==0)
+        else if (key.compare("SOURCE_ROUTING") == 0)
         {
             conf >> source_routing;
         }
-        else if (key.compare("END_HOST_SPRAY")==0)
+        else if (key.compare("END_HOST_SPRAY") == 0)
         {
             conf >> end_host_spray;
         }
-        else if (key.compare("REPS")==0)
+        else if (key.compare("REPS") == 0)
         {
             conf >> reps;
         }
-        else if (key.compare("RTO")==0)
+        else if (key.compare("RTO") == 0)
         {
             conf >> rto;
         }
-        else if (key.compare("MULTIPATHTIMEOUT")==0)
+        else if (key.compare("MULTIPATHTIMEOUT") == 0)
         {
             conf >> multipath_rto;
         }
@@ -881,31 +891,72 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         return false;
     }
 
+    // Read physical topology from file input
+
     uint32_t node_num, switch_num, link_num, trace_num;
-    // STyGIANet
-    // Please pay attention here. We added four more parameters in the topology file.
-    // Unless these are specified in the topology file, the parsing will not be
-    // correct anymore.
-    // t1l indicates the number of uplinks from each ToR to agg/spine switches.
-    // t2l indicates the total number of core switches. (In the case of 2-tier topology, set this to zero).
-    // podTors indicates the number of ToR switches in a single pod. (In the case of 2-tier topology, podTors = allTors).
-    // allTors indicates the total number of ToR switches in the topology.
-    topof >> node_num >> switch_num >> link_num >> t1l >> t2l >> podTors >> allTors;
     // flowf >> flow_num;
     tracef >> trace_num;
+    std::vector<uint32_t> node_type;
+    std::unordered_map<uint32_t, uint32_t> switch_radix;
 
-    std::vector<uint32_t> node_type(node_num, 0);
-    for (uint32_t i = 0; i < switch_num; i++)
-    {
-        uint32_t sid;
-        topof >> sid;
-        node_type[sid] = 1;
+    if (topology_file_format == "json")// from ns2 config file
+    { 
+        json topology;
+        try
+        {
+            topof >> topology;
+        }
+        catch (const json::parse_error& e)
+        {
+            NS_LOG_ERROR("JSON parsing failed: " + std::string(e.what()));
+            NS_FATAL_ERROR("Invalid JSON topology format.");
+        }
+
+        NS_LOG_INFO("json topology file detected.");
+        node_num = topology["node_num"];
+        switch_num = topology["switch_num"];
+        link_num = topology["link_num"];
+        node_type.resize(node_num, 0);
+
+        // switches
+        for (const auto& sw : topology["switches"])
+        {
+            uint32_t sid = sw["id"];
+            // OCS switch node_type == 3 for future compatibiltiy (SimAI uses 2 for NVSwitch)
+            node_type[sid] = 3;
+            switch_radix[sid] = sw.value("radix", 0);
+        }
     }
+
+    // use traditional topology file format
+    else
+    {
+        // STyGIANet
+        // Please pay attention here. We added four more parameters in the topology file.
+        // Unless these are specified in the topology file, the parsing will not be
+        // correct anymore.
+        // t1l indicates the number of uplinks from each ToR to agg/spine switches.
+        // t2l indicates the total number of core switches. (In the case of 2-tier topology, set
+        // this to zero). podTors indicates the number of ToR switches in a single pod. (In the case
+        // of 2-tier topology, podTors = allTors). allTors indicates the total number of ToR
+        // switches in the topology.
+        topof >> node_num >> switch_num >> link_num >> t1l >> t2l >> podTors >> allTors;
+
+        node_type.resize(node_num, 0);
+        for (uint32_t i = 0; i < switch_num; i++)
+        {
+            uint32_t sid;
+            topof >> sid;
+            node_type[sid] = 1;
+        }
+    }
+
+    // instantiate nodes
     for (uint32_t i = 0; i < node_num; i++)
     {
         if (node_type[i] == 0)
             n.Add(CreateObject<Node>());
-        else
+        else if (node_type[i] == 1)
         {
             Ptr<SwitchNode> sw = CreateObject<SwitchNode>();
             n.Add(sw);
@@ -915,6 +966,17 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             sw->SetAttribute("sourceRouting", BooleanValue(source_routing==1));
             sw->SetAttribute("endHostSpray", BooleanValue(end_host_spray==1));
             sw->SetAttribute("reps", BooleanValue(reps==1));
+        }
+        else if (node_type[i] == 3)
+        {
+            Ptr<OCSNode> sw = CreateObject<OCSNode>();
+            uint32_t radix = (switch_radix.count(i) > 0) ? switch_radix[i] : 128; // 128 default radix if not specified in json
+            sw->SetAttribute("Radix", UintegerValue(radix));
+            n.Add(sw);
+        }
+        else
+        {
+            NS_LOG_ERROR("Unknown node_type in parsing topology file"); // unreachable atm
         }
     }
 
@@ -1046,17 +1108,22 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
                               "must set kmax for each link speed");
                 NS_ASSERT_MSG(rate2pmax.find(rate) != rate2pmax.end(),
                               "must set pmax for each link speed");
-                if (cc_mode == 8){
+                if (cc_mode == 8)
+                {
                     NS_ASSERT_MSG(rate2kminDctcp.find(rate) != rate2kminDctcp.end(),
-                              "must set kmin for each link speed");
+                                  "must set kmin for each link speed");
                     NS_ASSERT_MSG(rate2kmaxDctcp.find(rate) != rate2kmaxDctcp.end(),
                                   "must set kmax for each link speed");
                     NS_ASSERT_MSG(rate2pmaxDctcp.find(rate) != rate2pmaxDctcp.end(),
                                   "must set pmax for each link speed");
                     // kmin = kmax = bdp/7
-                    sw->m_mmu->ConfigEcn(j, rate2kminDctcp[rate], rate2kmaxDctcp[rate], rate2pmaxDctcp[rate]);
+                    sw->m_mmu->ConfigEcn(j,
+                                         rate2kminDctcp[rate],
+                                         rate2kmaxDctcp[rate],
+                                         rate2pmaxDctcp[rate]);
                 }
-                else{
+                else
+                {
                     sw->m_mmu->ConfigEcn(j, rate2kmin[rate], rate2kmax[rate], rate2pmax[rate]);
                 }
                 // set pfc
@@ -1116,14 +1183,16 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             rdmaHw->SetAttribute("DctcpRateAI", DataRateValue(DataRate(dctcp_rate_ai)));
             rdmaHw->SetPintSmplThresh(pint_prob);
             rdmaHw->SetAttribute("TotalPauseTimes", UintegerValue(nic_total_pause_time));
-            
+
             // STyGIANet
             // set routing mode. Default is ecmp.
-            NS_ASSERT_MSG(source_routing+end_host_spray+reps <= 1, "source_routing, end_host_spray, and reps cannot be set at the same time");
-            rdmaHw->SetAttribute("sourceRouting", BooleanValue(source_routing==1));
-            rdmaHw->SetAttribute("endHostSpray", BooleanValue(end_host_spray==1));
-            rdmaHw->SetAttribute("reps", BooleanValue(reps==1));
-            if (reps==1)
+            NS_ASSERT_MSG(
+                source_routing + end_host_spray + reps <= 1,
+                "source_routing, end_host_spray, and reps cannot be set at the same time");
+            rdmaHw->SetAttribute("sourceRouting", BooleanValue(source_routing == 1));
+            rdmaHw->SetAttribute("endHostSpray", BooleanValue(end_host_spray == 1));
+            rdmaHw->SetAttribute("reps", BooleanValue(reps == 1));
+            if (reps == 1)
                 rdmaHw->SetAttribute("rto", UintegerValue(multipath_rto));
             else
                 rdmaHw->SetAttribute("rto", UintegerValue(rto));
@@ -1267,12 +1336,12 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
     }
     // Schedule link failure from command line
     if (link_failure > 0)
-    {   
+    {
         // Fail a link between the first ToR and the first spine
         Simulator::Schedule(MicroSeconds(1),
                             &linkFailure,
                             n,
-                            n.Get(node_num - switch_num), // First Tor
+                            n.Get(node_num - switch_num),            // First Tor
                             n.Get(node_num - switch_num + allTors)); // First spine or agg.
         std::cout << node_num - switch_num << " " << node_num - switch_num + allTors << std::endl;
     }
