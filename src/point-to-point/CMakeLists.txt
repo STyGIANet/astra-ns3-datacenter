@@ -37,6 +37,7 @@ build_lib(
     model/rdma-queue-pair.cc
     model/switch-mmu.cc
     model/switch-node.cc
+    model/ocs-node.cc
   HEADER_FILES
     ${mpi_headers}
     helper/point-to-point-helper.h
@@ -59,6 +60,7 @@ build_lib(
     model/switch-mmu.h
     model/switch-node.h
     model/trace-format.h
+    model/ocs-node.h
   LIBRARIES_TO_LINK ${libnetwork}
                     ${mpi_libraries}
                     ${libinternet}
