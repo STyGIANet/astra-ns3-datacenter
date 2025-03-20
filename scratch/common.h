@@ -899,9 +899,9 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
     std::vector<uint32_t> node_type;
     std::unordered_map<uint32_t, uint32_t> switch_radix;
 
-    if (topology_file_format == "json")// from ns2 config file
+    json topology;
+    if (topology_file_format == "json")// from ns3 config file
     { 
-        json topology;
         try
         {
             topof >> topology;
@@ -914,8 +914,13 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
 
         NS_LOG_INFO("json topology file detected.");
         node_num = topology["node_num"];
-        switch_num = topology["switch_num"];
-        link_num = topology["link_num"];
+        switch_num = topology["switches"].size();
+        link_num = topology["links"].size();
+        t1l = topology["t1l"];
+        t2l = topology["t2l"];
+        podTors = topology["podTors"];
+        allTors = topology["allTors"];
+
         node_type.resize(node_num, 0);
 
         // switches
@@ -1015,7 +1020,17 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         uint32_t src, dst;
         std::string data_rate, link_delay;
         double error_rate;
-        topof >> src >> dst >> data_rate >> link_delay >> error_rate;
+        if (topology_file_format == "json"){
+            auto link = topology["links"][i];
+            src = link["from"];
+            dst = link["to"];
+            data_rate = link["bandwidth"];
+            link_delay = link["latency"];
+            error_rate = link["error_rate"];
+        }
+        else{
+            topof >> src >> dst >> data_rate >> link_delay >> error_rate;
+        }
         Ptr<Node> snode = n.Get(src), dnode = n.Get(dst);
 
         qbb.SetDeviceAttribute("DataRate", StringValue(data_rate));
@@ -1057,6 +1072,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         }
 
         // used to create a graph of the topology
+        // source -> destination 
         nbr2if[snode][dnode].idx = DynamicCast<QbbNetDevice>(d.Get(0))->GetIfIndex();
         nbr2if[snode][dnode].up = true;
         nbr2if[snode][dnode].delay =
@@ -1064,6 +1080,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
                 ->GetDelay()
                 .GetTimeStep();
         nbr2if[snode][dnode].bw = DynamicCast<QbbNetDevice>(d.Get(0))->GetDataRate().GetBitRate();
+        // destination -> source, same bw - full duplex
         nbr2if[dnode][snode].idx = DynamicCast<QbbNetDevice>(d.Get(1))->GetIfIndex();
         nbr2if[dnode][snode].up = true;
         nbr2if[dnode][snode].delay =
