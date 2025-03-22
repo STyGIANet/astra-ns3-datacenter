@@ -52,6 +52,7 @@ uint32_t packet_payload_size = 1000, l2_chunk_size = 0, l2_ack_interval = 0;
 double pause_time = 5, simulator_stop_time = 3.01;
 std::string topology_file, flow_file, trace_file, trace_output_file;
 std::string topology_file_format = "standard"; // classic text-based format
+std::string reconfig_file = "";
 std::string fct_output_file = "fct.txt";
 std::string pfc_output_file = "pfc.txt";
 
@@ -550,6 +551,12 @@ ReadConf(string network_configuration)
             conf >> v;
             topology_file_format = v;
         }
+        else if (key.compare("RECONFIG_FILE") == 0)
+        {
+            std::string v;
+            conf >> v;
+            reconfig_file = v;
+        }
         else if (key.compare("FLOW_FILE") == 0)
         {
             std::string v;
@@ -898,6 +905,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
     tracef >> trace_num;
     std::vector<uint32_t> node_type;
     std::unordered_map<uint32_t, uint32_t> switch_radix;
+    bool isOCS = false;
 
     json topology;
     if (topology_file_format == "json")// from ns3 config file
@@ -913,6 +921,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         }
 
         NS_LOG_INFO("json topology file detected.");
+        isOCS = topology["format"] == "OCS";
         node_num = topology["node_num"];
         switch_num = topology["switches"].size();
         link_num = topology["links"].size();
@@ -931,6 +940,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             node_type[sid] = 3;
             switch_radix[sid] = sw.value("radix", 0);
         }
+
     }
 
     // use traditional topology file format
@@ -975,13 +985,78 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         else if (node_type[i] == 3)
         {
             Ptr<OCSNode> sw = CreateObject<OCSNode>();
-            uint32_t radix = (switch_radix.count(i) > 0) ? switch_radix[i] : 128; // 128 default radix if not specified in json
-            sw->SetAttribute("Radix", UintegerValue(radix));
+            if (switch_radix.count(i) > 0)
+                sw->SetAttribute("Radix", UintegerValue(switch_radix.count(i)));
             n.Add(sw);
         }
         else
         {
             NS_LOG_ERROR("Unknown node_type in parsing topology file"); // unreachable atm
+        }
+    }
+
+    // atm OCS requires _json_ physical topology with its extra info, such as switch radix
+    if (topology["format"] == "OCS")
+    {
+        std::ifstream reconfigFile(reconfig_file); // c_str ?
+        if (!reconfigFile)
+            NS_LOG_WARN("Could not open reconfiguration schedule file. Skipping "
+                        "reconfiguration scheduling.");
+        else
+        {
+            json reconfigJson;
+            try
+            {
+                reconfigFile >> reconfigJson;
+            }
+            catch (const json::parse_error& e)
+            {
+                NS_LOG_ERROR("JSON parsing error in reconfiguration schedule: " << e.what());
+                NS_FATAL_ERROR("Invalid JSON format in reconfiguration schedule.");
+            }
+
+            uint32_t switchId = reconfigJson["switch_id"];
+            uint64_t reconfigTime = reconfigJson["reconfig_time_ns"];
+            auto configs = reconfigJson["configs"];
+
+            // Find the node corresponding to switchId and ensure it is an OCSNode
+            Ptr<Node> node = n.Get(switchId);
+            Ptr<OCSNode> ocsNode = DynamicCast<OCSNode>(node);
+            if (ocsNode)
+            {
+                // Set the OCSNode's reconfiguration time attribute
+                ocsNode->SetAttribute("ReconfigTime", TimeValue(NanoSeconds(reconfigTime)));
+
+                // Schedule each reconfiguration event
+                for (auto& config : configs)
+                {
+                    uint64_t timestamp = config["start_time"];
+                    std::unordered_map<uint32_t, uint32_t> newMapping;
+                    // Iterate over the port_mapping object
+                    for (auto it = config["port_mapping"].begin();
+                         it != config["port_mapping"].end();
+                         ++it)
+                    {
+                        // Convert key (string) to integer for input port
+                        uint32_t inPort = std::stoul(it.key());
+                        uint32_t outPort = it.value();
+                        newMapping[inPort] = outPort;
+                    }
+                    NS_LOG_INFO("Scheduling reconfiguration for switch "
+                                << switchId << " at timestamp " << timestamp);
+                    // Schedule the reconfiguration event at the given timestamp (in
+                    // nanoseconds)
+                    Simulator::Schedule(NanoSeconds(timestamp),
+                                        &OCSNode::Reconfigure,
+                                        ocsNode,
+                                        newMapping);
+                }
+            }
+            else
+            {
+                NS_LOG_ERROR("Switch with id "
+                             << switchId << " is not an OCSNode. Cannot schedule reconfiguration.");
+            }
         }
     }
 
@@ -1368,4 +1443,4 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
     Simulator::Schedule(NanoSeconds(qlen_mon_start), &monitor_buffer, qlen_output, &n);
     std::cout << "SetupNetwork finished!" << std::endl;
     return true;
-}
+    }
