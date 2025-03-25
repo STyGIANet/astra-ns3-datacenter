@@ -1133,14 +1133,18 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         // (ipv4.Assign(d)), because we want our IP to be the primary IP (first in
         // the IP address list), so that the global routing is based on our IP
         NetDeviceContainer d = qbb.Install(snode, dnode);
+
         if (snode->GetNodeType() == 0)
         {
+            
+            NS_LOG_INFO("Source is GPU Host, id: " << src); // for debug
             Ptr<Ipv4> ipv4 = snode->GetObject<Ipv4>();
             ipv4->AddInterface(d.Get(0));
             ipv4->AddAddress(1, Ipv4InterfaceAddress(serverAddress[src], Ipv4Mask(0xff000000)));
         }
         if (dnode->GetNodeType() == 0)
         {
+            NS_LOG_INFO("Destination is GPU Host, id: " << dst); // for debug
             Ptr<Ipv4> ipv4 = dnode->GetObject<Ipv4>();
             ipv4->AddInterface(d.Get(1));
             ipv4->AddAddress(1, Ipv4InterfaceAddress(serverAddress[dst], Ipv4Mask(0xff000000)));

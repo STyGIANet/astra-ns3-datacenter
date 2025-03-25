@@ -232,7 +232,7 @@ class Node : public Object
     void DoInitialize() override;
 
     /*
-     * Defines type of node. 1 for switch node, 0 for else.
+     * Defines type of node. 3 for OCSNode, 1 for switch node, 0 for else.
      */
 	  uint32_t m_node_type;
 
