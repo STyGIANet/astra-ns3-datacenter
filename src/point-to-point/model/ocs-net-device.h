@@ -17,12 +17,15 @@
 //#include "ns3/queue-fwd.h"
 #include "ns3/traced-callback.h"
 
+#include "ocs-node.h"
+#include "ocs-channel.h"
+
 #include <cstring>
 
 namespace ns3
 {
 
-class PointToPointChannel;
+class OCSChannel;
 class ErrorModel;
 
 
@@ -48,7 +51,7 @@ class OCSNetDevice : public NetDevice
      * \param ch Ptr to the channel to which this object is being attached.
      * \return true if the operation was successful (always true actually)
      */
-    bool Attach(Ptr<PointToPointChannel> ch);
+    bool Attach(Ptr<OCSChannel> ch);
 
     /**
      * Attach a receive ErrorModel to the OCSNetDevice.
@@ -61,7 +64,7 @@ class OCSNetDevice : public NetDevice
     void SetReceiveErrorModel(Ptr<ErrorModel> em);
 
     /**
-     * Receive a packet from a connected PointToPointChannel.
+     * Receive a packet from a connected OCSChannel.
      *
      * The OCSNetDevice receives packets from its connected channel
      * and forwards them up the protocol stack.  This is the public method
@@ -114,7 +117,6 @@ class OCSNetDevice : public NetDevice
 
     Address GetMulticast(Ipv6Address addr) const override;
 
-    void SetPromiscReceiveCallback(PromiscReceiveCallback cb) override;
     bool SupportsSendFrom() const override;
 
   protected:
@@ -170,7 +172,7 @@ class OCSNetDevice : public NetDevice
      * The PointToPointChannel to which this OCSNetDevice has been
      * attached.
      */
-    Ptr<PointToPointChannel> m_channel;
+    Ptr<OCSChannel> m_channel;
 
     /**
      * The Queue which this OCSNetDevice uses as a packet source.

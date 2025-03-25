@@ -12,7 +12,7 @@
 
 #include "ocs-net-device.h"
 #include "ocs-node.h"
-#include "point-to-point-channel.h"
+#include "ocs-channel.h"
 
 #include "ns3/log.h"
 #include "ns3/simulator.h"
@@ -21,6 +21,8 @@
 #include "ns3/mac48-address.h"
 #include "ns3/pointer.h"
 #include "ns3/error-model.h"
+#include "qbb-net-device.h"
+
 
 
 namespace ns3 {
@@ -111,7 +113,7 @@ OCSNetDevice::Send (Ptr<Packet> packet, const Address &dest, uint16_t protocolNu
   // which also schedules a TransmitComplete event after a calculated delay.
   // Here we override that behavior by setting a zero transmission time.
   Time txTime = NanoSeconds(0);
-  bool result = m_channel->TransmitStart(packet, Ptr<PointToPointNetDevice>(this, false), txTime);
+  bool result = m_channel->TransmitStart(packet, this, txTime);
 
 
   // Optical reflection is essentially instantaneous, so schedule transmit complete immediately.
@@ -134,14 +136,14 @@ OCSNetDevice::TransmitComplete()
 }
 
 bool
-OCSNetDevice::Attach(Ptr<PointToPointChannel> ch)
+OCSNetDevice::Attach(Ptr<OCSChannel> ch)
 {
     NS_LOG_FUNCTION(this << &ch);
 
     m_channel = ch;
 
     // this cast is hack-y and should be replaced
-    m_channel->Attach(Ptr<PointToPointNetDevice>(this));
+    m_channel->Attach(this);
 
     NotifyLinkUp();
     return true;
