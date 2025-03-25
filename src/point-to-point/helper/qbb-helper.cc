@@ -41,6 +41,9 @@
 #include "ns3/custom-header.h"
 #include "ns3/trace-format.h"
 
+#include "ns3/ocs-node.h"
+#include "ns3/ocs-net-device.h"
+
 NS_LOG_COMPONENT_DEFINE ("QbbHelper");
 
 namespace ns3 {
@@ -51,6 +54,8 @@ QbbHelper::QbbHelper ()
   m_deviceFactory.SetTypeId ("ns3::QbbNetDevice");
   m_channelFactory.SetTypeId ("ns3::QbbChannel");
   m_remoteChannelFactory.SetTypeId ("ns3::QbbRemoteChannel");
+  m_ocsDeviceFactory.SetTypeId ("ns3::OCSNetDevice");
+  m_ocsChannelFactory.SetTypeId ("ns3::OCSChannel");
 }
 
 void
@@ -71,6 +76,7 @@ void
 QbbHelper::SetDeviceAttribute (std::string n1, const AttributeValue &v1)
 {
   m_deviceFactory.Set (n1, v1);
+  m_ocsDeviceFactory.Set (n1, v1);
 }
 
 void
@@ -78,6 +84,7 @@ QbbHelper::SetChannelAttribute (std::string n1, const AttributeValue &v1)
 {
   m_channelFactory.Set (n1, v1);
   m_remoteChannelFactory.Set (n1, v1);
+  m_ocsChannelFactory.Set (n1, v1);
 }
 
 void
@@ -237,24 +244,14 @@ QbbHelper::Install (Ptr<Node> a, Ptr<Node> b)
 {
   NetDeviceContainer container;
 
-  Ptr<QbbNetDevice> devA = m_deviceFactory.Create<QbbNetDevice> ();
-  devA->SetAddress (Mac48Address::Allocate ());
-  a->AddDevice (devA);
-  Ptr<QbbNetDevice> devB = m_deviceFactory.Create<QbbNetDevice> ();
-  devB->SetAddress (Mac48Address::Allocate ());
-  b->AddDevice (devB);
-
-  Ptr<BEgressQueue> queueA = CreateObject<BEgressQueue> ();
-  devA->SetQueue (queueA);
-  Ptr<BEgressQueue> queueB = CreateObject<BEgressQueue> ();
-  devB->SetQueue (queueB);
+  Ptr<OCSNode> NodeA_OCS = a->GetObject<OCSNode>();
+  Ptr<OCSNode> NodeB_OCS = b->GetObject<OCSNode>();
 
 
   // If MPI is enabled, we need to see if both nodes have the same system id
   // (rank), and the rank is the same as this instance.  If both are true,
   //use a normal p2p channel, otherwise use a remote channel
   bool useNormalChannel = true;
-  Ptr<QbbChannel> channel = 0;
   if (MpiInterface::IsEnabled ())
     {
       uint32_t n1SystemId = a->GetSystemId ();
@@ -265,25 +262,104 @@ QbbHelper::Install (Ptr<Node> a, Ptr<Node> b)
           useNormalChannel = false;
         }
     }
-  if (useNormalChannel)
-    {
-      channel = m_channelFactory.Create<QbbChannel> ();
-    }
-  else
-    {
-      channel = m_remoteChannelFactory.Create<QbbRemoteChannel> ();
-      Ptr<MpiReceiver> mpiRecA = CreateObject<MpiReceiver> ();
-      Ptr<MpiReceiver> mpiRecB = CreateObject<MpiReceiver> ();
-      mpiRecA->SetReceiveCallback (MakeCallback (&QbbNetDevice::Receive, devA));
-      mpiRecB->SetReceiveCallback (MakeCallback (&QbbNetDevice::Receive, devB));
-      devA->AggregateObject (mpiRecA);
-      devB->AggregateObject (mpiRecB);
-    }
 
-  devA->Attach (channel);
-  devB->Attach (channel);
-  container.Add (devA);
-  container.Add (devB);
+  // if both nodes are not OCSNode, so we can install QbbNetDevices on both and connect with QbbChannel
+  if (!NodeA_OCS && !NodeB_OCS)
+  {
+      Ptr<QbbNetDevice> devA = m_deviceFactory.Create<QbbNetDevice>();
+      devA->SetAddress(Mac48Address::Allocate());
+      a->AddDevice(devA);
+      Ptr<QbbNetDevice> devB = m_deviceFactory.Create<QbbNetDevice>();
+      devB->SetAddress(Mac48Address::Allocate());
+      b->AddDevice(devB);
+
+      Ptr<BEgressQueue> queueA = CreateObject<BEgressQueue>();
+      devA->SetQueue(queueA);
+      Ptr<BEgressQueue> queueB = CreateObject<BEgressQueue>();
+      devB->SetQueue(queueB);
+
+
+      // create the fitting QbbChannel and attach
+      Ptr<QbbChannel> channel = 0;
+      if (useNormalChannel)
+      {
+        channel = m_channelFactory.Create<QbbChannel> ();
+      }
+      else
+      {
+        channel = m_remoteChannelFactory.Create<QbbRemoteChannel> ();
+        Ptr<MpiReceiver> mpiRecA = CreateObject<MpiReceiver> ();
+        Ptr<MpiReceiver> mpiRecB = CreateObject<MpiReceiver> ();
+        mpiRecA->SetReceiveCallback (MakeCallback (&QbbNetDevice::Receive, devA));
+        mpiRecB->SetReceiveCallback (MakeCallback (&QbbNetDevice::Receive, devB));
+        devA->AggregateObject (mpiRecA);
+        devB->AggregateObject (mpiRecB);
+      }
+      devA->Attach (channel);
+      devB->Attach (channel);
+      container.Add (devA);
+      container.Add (devB);
+  }
+  // if exactly one node is OCSNode
+  else if ((NodeA_OCS && !NodeB_OCS) || (!NodeA_OCS && NodeB_OCS))
+  {
+      // create the fitting OCSChannel and attach
+      Ptr<OCSChannel> channel = 0;
+      if (useNormalChannel)
+      {
+        channel = m_ocsChannelFactory.Create<OCSChannel> ();
+      }
+      else
+      {
+        NS_FATAL_ERROR("MPI enabled but OCS Remote Channel not yet implemented. ");
+      }
+
+      if (NodeA_OCS)
+      {
+          Ptr<OCSNetDevice> ocsDevA = m_ocsDeviceFactory.Create<OCSNetDevice>();
+          ocsDevA->SetAddress(
+              Mac48Address::Allocate()); // an actual OCS Device doesn't have a MAC Address but the
+                                         // qbbNetDevice ofc requires its neighbour to have one
+          a->AddDevice(ocsDevA);
+
+          Ptr<QbbNetDevice> qbbDevB = m_deviceFactory.Create<QbbNetDevice>();
+          qbbDevB->SetAddress(Mac48Address::Allocate());
+          b->AddDevice(qbbDevB);
+          Ptr<BEgressQueue> queueB = CreateObject<BEgressQueue>();
+          qbbDevB->SetQueue(queueB);
+
+          ocsDevA->Attach (channel);
+          qbbDevB->Attach (channel);
+          container.Add (ocsDevA);
+          container.Add (qbbDevB);
+      }
+      else
+      {
+          Ptr<QbbNetDevice> qbbDevA = m_deviceFactory.Create<QbbNetDevice>();
+          qbbDevA->SetAddress(Mac48Address::Allocate());
+          a->AddDevice(qbbDevA);
+          Ptr<BEgressQueue> queueA = CreateObject<BEgressQueue>();
+          qbbDevA->SetQueue(queueA);
+
+          Ptr<OCSNetDevice> ocsDevB = m_ocsDeviceFactory.Create<OCSNetDevice>();
+          ocsDevB->SetAddress(Mac48Address::Allocate());
+          b->AddDevice(ocsDevB);
+
+          qbbDevA->Attach (channel);
+          ocsDevB->Attach (channel);
+          container.Add (qbbDevA);
+          container.Add (ocsDevB);
+      }
+
+
+  }
+  // if both are OCSNodes -> invalid. At the moment we only support hetergenous links of type
+  // OCSNetDevice <-> QbbNetDevice
+  else
+  {
+      NS_FATAL_ERROR("Cannot install link between two OCSNodes; only heterogeneous links "
+                     "(OCSNetDevice <-> QbbNetDevice) are supported.");
+  }
 
   return container;
 }

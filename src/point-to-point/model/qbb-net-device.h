@@ -22,6 +22,7 @@
 
 #include "ns3/point-to-point-net-device.h"
 #include "ns3/qbb-channel.h"
+#include "ocs-channel.h"
 //#include "ns3/fivetuple.h"
 #include "ns3/event-id.h"
 #include "ns3/broadcom-egress-queue.h"
@@ -121,6 +122,8 @@ public:
 
   bool Attach (Ptr<QbbChannel> ch);
 
+	bool Attach(Ptr<OCSChannel> ch);
+
    virtual Ptr<Channel> GetChannel (void) const;
 
    void SetQueue (Ptr<BEgressQueue> q);
@@ -161,7 +164,7 @@ protected:
    */
   Ptr<BEgressQueue> m_queue;
 
-  Ptr<QbbChannel> m_channel;
+  Ptr<PointToPointChannel> m_channel;
 
   //pfc
   bool m_qbbEnabled;	//< PFC behaviour enabled

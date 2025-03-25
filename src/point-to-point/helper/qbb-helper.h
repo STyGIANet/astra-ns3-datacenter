@@ -30,6 +30,8 @@
 #include "ns3/trace-format.h"
 #include "ns3/qbb-net-device.h"
 
+#include "ns3/ocs-node.h"
+#include "ns3/ocs-net-device.h"
 namespace ns3 {
 
 class NetDevice;
@@ -191,9 +193,11 @@ private:
     bool explicitFilename);
 
   ObjectFactory m_queueFactory;
-  ObjectFactory m_channelFactory;
-  ObjectFactory m_remoteChannelFactory;
-  ObjectFactory m_deviceFactory;
+  ObjectFactory m_channelFactory; //qbbChannel
+  ObjectFactory m_remoteChannelFactory; //qbbRemoteChannel
+  ObjectFactory m_deviceFactory; // qbbDevice
+  ObjectFactory m_ocsDeviceFactory;
+  ObjectFactory m_ocsChannelFactory;
 };
 
 } // namespace ns3

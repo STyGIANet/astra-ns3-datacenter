@@ -46,6 +46,7 @@
 #include "ns3/seq-ts-header.h"
 #include "ns3/pointer.h"
 #include "ns3/custom-header.h"
+#include "ocs-channel.h"
 #include <iostream>
 NS_LOG_COMPONENT_DEFINE("QbbNetDevice");
 
@@ -471,6 +472,16 @@ namespace ns3 {
 
 	bool
 		QbbNetDevice::Attach(Ptr<QbbChannel> ch)
+	{
+		NS_LOG_FUNCTION(this << &ch);
+		m_channel = ch;
+		m_channel->Attach(this);
+		NotifyLinkUp();
+		return true;
+	}
+
+	bool
+		QbbNetDevice::Attach(Ptr<OCSChannel> ch)
 	{
 		NS_LOG_FUNCTION(this << &ch);
 		m_channel = ch;
