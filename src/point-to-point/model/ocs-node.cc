@@ -1,12 +1,15 @@
+#include "ns3/node.h"
 #include "ocs-node.h"
 #include "ns3/log.h"
 #include "ns3/simulator.h"
 #include "ns3/nstime.h"
 #include "ns3/uinteger.h"
 
-namespace ns3 {
 
 NS_LOG_COMPONENT_DEFINE("OCSNode");
+namespace ns3 {
+
+NS_OBJECT_ENSURE_REGISTERED (OCSNode);
 
 TypeId OCSNode::GetTypeId (void)
 {
@@ -28,11 +31,14 @@ TypeId OCSNode::GetTypeId (void)
 
 OCSNode::OCSNode()
   : m_inReconfig(false)
-{}
+{
+  m_node_type = 3; // node type 3 for OCSNode
+}
 
 void OCSNode::DoInitialize()
 {
   Node::DoInitialize();
+  NS_LOG_INFO("OCSNode: Set node type to : " << m_node_type);
 
   m_portMap.clear();
   for (uint32_t i = 0; i < m_radix; i++) {
