@@ -7,7 +7,7 @@
 
 #include "ns3/address.h"
 #include "ns3/callback.h"
-//#include "ns3/data-rate.h"
+#include "ns3/data-rate.h"
 #include "ns3/mac48-address.h"
 #include "ns3/net-device.h"
 #include "ns3/node.h"
@@ -155,11 +155,12 @@ class OCSNetDevice : public NetDevice
     void NotifyLinkUp();
 
     /**
+     * Unused, simply for compatibility.
      * The data rate that the Net Device uses to simulate packet transmission
      * timing.
      */
     // not required because we don't have a transmission delay
-    //DataRate m_bps;
+    DataRate m_bps;
 
     /**
      * The interframe gap that the Net Device uses to throttle packet

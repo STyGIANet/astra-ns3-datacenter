@@ -17,6 +17,7 @@
 #include "ns3/log.h"
 #include "ns3/simulator.h"
 #include "ns3/uinteger.h"
+#include "ns3/data-rate.h"
 #include "ns3/trace-source-accessor.h"
 #include "ns3/mac48-address.h"
 #include "ns3/pointer.h"
@@ -55,6 +56,11 @@ OCSNetDevice::GetTypeId(void)
                         PointerValue(),
                         MakePointerAccessor(&OCSNetDevice::m_receiveErrorModel),
                         MakePointerChecker<ErrorModel>())
+        .AddAttribute("DataRate",
+                        "Not used, only for compatibility with other NetDevices. A OCSNetDevice simulates the in- and output ports of a OCSNode that only reflects light. So incoming datarate == outgoing datarate, no transmission delay",
+                        DataRateValue(DataRate("32768b/s")),
+                        MakeDataRateAccessor(&OCSNetDevice::m_bps),
+                        MakeDataRateChecker())
         // Traces, for point to point channels there is no meaningful difference
         // between sniffer and promiscious sniffer
         .AddTraceSource("Sniffer",
