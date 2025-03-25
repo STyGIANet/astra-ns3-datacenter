@@ -2,8 +2,8 @@
 / TODO 
 */
 
-#ifndef POINT_TO_POINT_NET_DEVICE_H
-#define POINT_TO_POINT_NET_DEVICE_H
+#ifndef OCS_NET_DEVICE_H
+#define OCS_NET_DEVICE_H
 
 #include "ns3/address.h"
 #include "ns3/callback.h"
@@ -335,4 +335,4 @@ class OCSNetDevice : public NetDevice
 
 } // namespace ns3
 
-#endif /* POINT_TO_POINT_NET_DEVICE_H */
+#endif /* OCS_NET_DEVICE_H */

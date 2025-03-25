@@ -38,7 +38,8 @@ build_lib(
     model/switch-mmu.cc
     model/switch-node.cc
     model/ocs-node.cc
-    #model/ocs-net-device.cc
+    model/ocs-net-device.cc
+    model/ocs-channel.cc
   HEADER_FILES
     ${mpi_headers}
     helper/point-to-point-helper.h
@@ -62,7 +63,8 @@ build_lib(
     model/switch-node.h
     model/trace-format.h
     model/ocs-node.h
-    #model/ocs-net-device.h
+    model/ocs-net-device.h
+    model/ocs-channel.h
   LIBRARIES_TO_LINK ${libnetwork}
                     ${mpi_libraries}
                     ${libinternet}

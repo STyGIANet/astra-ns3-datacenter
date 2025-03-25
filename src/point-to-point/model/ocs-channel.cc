@@ -1,14 +1,17 @@
-#include "ocs-net-device.h"
-#include "ocs-channel.h"
-#include "qbb-net-device.h"
+
+#include "ns3/point-to-point-net-device.h"
+#include "ns3/point-to-point-channel.h"
+#include "ns3/node.h"
 #include "ns3/trace-source-accessor.h"
 #include "ns3/packet.h"
 #include "ns3/simulator.h"
 #include "ns3/log.h"
 #include "ns3/net-device.h"
-#include "ns3/node.h"
 #include <iostream>
 #include <fstream>
+#include "qbb-net-device.h"
+#include "ocs-net-device.h"
+#include "ocs-channel.h"
 
 
 
