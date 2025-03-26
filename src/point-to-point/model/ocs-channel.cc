@@ -25,12 +25,12 @@ TypeId
 OCSChannel::GetTypeId (void)
 {
   static TypeId tid = TypeId ("ns3::OCSChannel")
-    .SetParent<Channel> ()
+    .SetParent<PointToPointChannel> ()
     .AddConstructor<OCSChannel> ()
-    .AddAttribute ("Delay", "Transmission delay through the channel",
-                   TimeValue (Seconds (0)),
-                   MakeTimeAccessor (&OCSChannel::m_delay),
-                   MakeTimeChecker ())
+    //.AddAttribute ("Delay", "Transmission delay through the channel",
+    //               TimeValue (Seconds (0)),
+    //               MakeTimeAccessor (&OCSChannel::m_delay),
+    //               MakeTimeChecker ())
     .AddTraceSource ("TxRxOCS",
                      "Trace source indicating transmission of packet from the channel, used by the Animation interface.",
                      MakeTraceSourceAccessor (&OCSChannel::m_txrxOCS),
@@ -44,6 +44,24 @@ OCSChannel::OCSChannel()
 {
   NS_LOG_FUNCTION_NOARGS ();
 }
+
+// void
+// OCSChannel::Attach (Ptr<QbbNetDevice> device)
+// {
+//   NS_LOG_FUNCTION (this << device);
+//   NS_ASSERT_MSG (m_nDevices < N_DEVICES, "Only two devices permitted");
+//   NS_ASSERT (device);
+
+//   m_link[m_nDevices++].m_src = device;
+//   // When both devices are attached, complete the link configuration.
+//   if (m_nDevices == N_DEVICES)
+//     {
+//       m_link[0].m_dst = m_link[1].m_src;
+//       m_link[1].m_dst = m_link[0].m_src;
+//       m_link[0].m_state = IDLE;
+//       m_link[1].m_state = IDLE;
+//     }
+// }
 
 void
 OCSChannel::Attach (Ptr<NetDevice> device)

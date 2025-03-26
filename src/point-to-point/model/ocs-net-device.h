@@ -42,8 +42,8 @@ class OCSNetDevice : public NetDevice
     OCSNetDevice& operator=(const OCSNetDevice&) = delete;
     OCSNetDevice(const OCSNetDevice&) = delete;
 
-    //void SetDataRate(DataRate bps);
-    //DataRate GetDataRate();
+    void SetDataRate(DataRate bps);
+    DataRate GetDataRate();
 
     /**
      * Attach the device to a channel.

@@ -19,6 +19,7 @@
 */
 
 #define __STDC_LIMIT_MACROS 1
+#include "ocs-channel.h"
 #include <stdint.h>
 #include <stdio.h>
 #include "ns3/qbb-net-device.h"
@@ -46,7 +47,6 @@
 #include "ns3/seq-ts-header.h"
 #include "ns3/pointer.h"
 #include "ns3/custom-header.h"
-#include "ocs-channel.h"
 #include <iostream>
 NS_LOG_COMPONENT_DEFINE("QbbNetDevice");
 
@@ -485,7 +485,7 @@ namespace ns3 {
 	{
 		NS_LOG_FUNCTION(this << &ch);
 		m_channel = ch;
-		m_channel->Attach(this);
+		ch->Attach(this); //its important to call OCSChannel Attach funciton here
 		NotifyLinkUp();
 		return true;
 	}

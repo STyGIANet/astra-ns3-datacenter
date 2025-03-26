@@ -29,6 +29,7 @@
 #include "ns3/object.h"
 #include "ns3/ptr.h"
 #include "ns3/custom-header.h"
+#include "ns3/data-rate.h"
 
 #include <stdint.h>
 
@@ -104,6 +105,24 @@ class NetDevice : public Object
      */
     static TypeId GetTypeId();
     ~NetDevice() override;
+
+    /**
+     * \param the DataRate of this device
+     */
+
+    virtual void SetDataRate(DataRate bps)
+    {
+        printf("NetDevice::SetDataRate not implemented. Use a NetDevice subclass\n");
+    }
+
+    /**
+     * \return the DataRate of this device
+     */
+    virtual DataRate GetDataRate()
+    {
+        printf("NetDevice::GetDataRate not implemented. Use a NetDevice subclass\n");
+        return DataRate("0bps");
+    }
 
     /**
      * \param index ifIndex of the device

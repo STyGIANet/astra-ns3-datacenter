@@ -385,10 +385,11 @@ SetRoutingEntries(bool afterFailure)
                         DynamicCast<SwitchNode>(node)->AddTableEntry(dstAddr, interface);
                     }
                 }
-                else
+                else if (node->GetNodeType() == 0)
                 {
                     node->GetObject<RdmaDriver>()->m_rdma->AddTableEntry(dstAddr, interface);
                 }
+                // For OCSNodes forwarding decisions are according to configuration / port mapping
             }
         }
     }
@@ -1107,6 +1108,8 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             topof >> src >> dst >> data_rate >> link_delay >> error_rate;
         }
         Ptr<Node> snode = n.Get(src), dnode = n.Get(dst);
+        bool snodeIsOCS = (DynamicCast<OCSNode>(snode) != nullptr);
+        bool dnodeIsOCS = (DynamicCast<OCSNode>(dnode) != nullptr);
 
         qbb.SetDeviceAttribute("DataRate", StringValue(data_rate));
         qbb.SetChannelAttribute("Delay", StringValue(link_delay));
@@ -1151,23 +1154,60 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         }
 
         // used to create a graph of the topology
-        // source -> destination 
-        nbr2if[snode][dnode].idx = DynamicCast<QbbNetDevice>(d.Get(0))->GetIfIndex();
-        nbr2if[snode][dnode].up = true;
-        nbr2if[snode][dnode].delay =
-            DynamicCast<QbbChannel>(DynamicCast<QbbNetDevice>(d.Get(0))->GetChannel())
-                ->GetDelay()
-                .GetTimeStep();
-        nbr2if[snode][dnode].bw = DynamicCast<QbbNetDevice>(d.Get(0))->GetDataRate().GetBitRate();
-        // destination -> source, same bw - full duplex
-        nbr2if[dnode][snode].idx = DynamicCast<QbbNetDevice>(d.Get(1))->GetIfIndex();
-        nbr2if[dnode][snode].up = true;
-        nbr2if[dnode][snode].delay =
-            DynamicCast<QbbChannel>(DynamicCast<QbbNetDevice>(d.Get(1))->GetChannel())
-                ->GetDelay()
-                .GetTimeStep();
-        nbr2if[dnode][snode].bw = DynamicCast<QbbNetDevice>(d.Get(1))->GetDataRate().GetBitRate();
+        uint32_t s_idx, d_idx;
+        uint64_t channel_delay;
+        uint64_t s_bw, d_bw;
 
+
+        if (snodeIsOCS) {
+            Ptr<OCSNetDevice> sdev = DynamicCast<OCSNetDevice>(d.Get(0));
+            Ptr<QbbNetDevice> ddev = DynamicCast<QbbNetDevice>(d.Get(1));
+
+            s_idx = sdev->GetIfIndex();            
+            s_bw = sdev->GetDataRate().GetBitRate(); 
+            // perhaps its more sensible to use the QbbNetDevice DataRate again here, bcs OCS only reflects and we don't really use/care about DataRate in OCSNetDevice
+
+            //delay is a channel attribute, and we can easliy get OCSChannel from OCSNetDevice
+            channel_delay = DynamicCast<OCSChannel>(sdev->GetChannel())->GetDelay().GetTimeStep();            
+
+            d_idx = ddev->GetIfIndex();
+            d_bw = ddev->GetDataRate().GetBitRate();
+        }
+        else if (dnodeIsOCS){
+            Ptr<QbbNetDevice> sdev = DynamicCast<QbbNetDevice>(d.Get(0));
+            Ptr<OCSNetDevice> ddev = DynamicCast<OCSNetDevice>(d.Get(1));
+
+            s_idx = sdev->GetIfIndex();
+            channel_delay = DynamicCast<OCSChannel>(ddev->GetChannel())->GetDelay().GetTimeStep();
+            s_bw = sdev->GetDataRate().GetBitRate();
+
+            d_idx = ddev->GetIfIndex();
+            d_bw = ddev->GetDataRate().GetBitRate();
+        }
+        else {
+            Ptr<QbbNetDevice> sdev = DynamicCast<QbbNetDevice>(d.Get(0));
+            Ptr<QbbNetDevice> ddev = DynamicCast<QbbNetDevice>(d.Get(1));
+            
+            s_idx = sdev->GetIfIndex();
+            channel_delay = DynamicCast<QbbChannel>(sdev->GetChannel())->GetDelay().GetTimeStep();
+            s_bw = sdev->GetDataRate().GetBitRate();
+
+            d_idx = ddev->GetIfIndex();
+            d_bw = ddev->GetDataRate().GetBitRate();            
+        }
+
+        // source -> destination 
+        nbr2if[snode][dnode].idx = s_idx;
+        nbr2if[snode][dnode].up = true;
+        nbr2if[snode][dnode].delay = channel_delay;
+        nbr2if[snode][dnode].bw = s_bw;
+        // destination -> source, usually same bw - full duplex
+        nbr2if[dnode][snode].idx = d_idx;
+        nbr2if[dnode][snode].up = true;
+        nbr2if[dnode][snode].delay = channel_delay;
+        nbr2if[dnode][snode].bw = d_bw;
+        NS_LOG_INFO("Finished Setup of nbr2if");
+        fflush(stdout);
         // This is just to set up the connectivity between nodes. The IP addresses
         // are useless
         char ipstring[16];
@@ -1176,12 +1216,16 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         ipv4.Assign(d);
 
         // setup PFC trace
-        DynamicCast<QbbNetDevice>(d.Get(0))->TraceConnectWithoutContext(
+        if (!snodeIsOCS){
+            DynamicCast<QbbNetDevice>(d.Get(0))->TraceConnectWithoutContext(
             "QbbPfc",
-            MakeBoundCallback(&get_pfc, pfc_file, DynamicCast<QbbNetDevice>(d.Get(0))));
-        DynamicCast<QbbNetDevice>(d.Get(1))->TraceConnectWithoutContext(
+           MakeBoundCallback(&get_pfc, pfc_file, DynamicCast<QbbNetDevice>(d.Get(0))));
+        }
+        if (!dnodeIsOCS){
+            DynamicCast<QbbNetDevice>(d.Get(1))->TraceConnectWithoutContext(
             "QbbPfc",
             MakeBoundCallback(&get_pfc, pfc_file, DynamicCast<QbbNetDevice>(d.Get(1))));
+        }
     }
 
     nic_rate = get_nic_rate(n);
@@ -1379,6 +1423,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
 
     FILE* trace_output = fopen(trace_output_file.c_str(), "w");
     // dump link speed to trace file
+    enable_trace = 0; //temporary
     if (enable_trace)
     {
         qbb.EnableTracing(trace_output, trace_nodes);

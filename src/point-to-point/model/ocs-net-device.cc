@@ -10,9 +10,9 @@
  *
  */
 
-#include "ocs-net-device.h"
 #include "ocs-node.h"
 #include "ocs-channel.h"
+#include "ocs-net-device.h"
 
 #include "ns3/log.h"
 #include "ns3/simulator.h"
@@ -94,6 +94,18 @@ OCSNetDevice::DoDispose()
     m_channel = nullptr;
     m_receiveErrorModel = nullptr;
     NetDevice::DoDispose();
+}
+
+void
+OCSNetDevice::SetDataRate(DataRate bps)
+{
+    NS_LOG_FUNCTION(this);
+    m_bps = bps;
+}
+
+DataRate
+OCSNetDevice::GetDataRate(){
+	return m_bps;
 }
 
 bool

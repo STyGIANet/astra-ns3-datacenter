@@ -11,8 +11,8 @@
   ],
   "links": [
     { "from": 3, "to": 0, "switchport": 0, "bandwidth": "400Gbps", "latency": "0.0005ms", "error_rate": 0 },
-    { "from": 3, "to": 1, "switchport": 0, "bandwidth": "400Gbps", "latency": "0.0005ms", "error_rate": 0 },
-    { "from": 3, "to": 2, "switchport": 0, "bandwidth": "400Gbps", "latency": "0.0005ms", "error_rate": 0 }
+    { "from": 3, "to": 1, "switchport": 1, "bandwidth": "400Gbps", "latency": "0.0005ms", "error_rate": 0 },
+    { "from": 3, "to": 2, "switchport": 2, "bandwidth": "400Gbps", "latency": "0.0005ms", "error_rate": 0 }
   ]
 }
 

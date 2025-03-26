@@ -20,9 +20,9 @@
 #ifndef QBB_NET_DEVICE_H
 #define QBB_NET_DEVICE_H
 
+#include "ocs-channel.h"
 #include "ns3/point-to-point-net-device.h"
 #include "ns3/qbb-channel.h"
-#include "ocs-channel.h"
 //#include "ns3/fivetuple.h"
 #include "ns3/event-id.h"
 #include "ns3/broadcom-egress-queue.h"
@@ -31,7 +31,7 @@
 #include "ns3/udp-header.h"
 #include "ns3/rdma-queue-pair.h"
 #include <vector>
-#include<map>
+#include <map>
 #include <ns3/rdma.h>
 
 namespace ns3 {
@@ -122,7 +122,7 @@ public:
 
   bool Attach (Ptr<QbbChannel> ch);
 
-	bool Attach(Ptr<OCSChannel> ch);
+	bool Attach (Ptr<OCSChannel> ch);
 
    virtual Ptr<Channel> GetChannel (void) const;
 

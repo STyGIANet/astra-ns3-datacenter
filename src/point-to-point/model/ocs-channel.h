@@ -4,6 +4,7 @@
 #include <list>
 #include "ns3/channel.h"
 #include "ns3/point-to-point-channel.h"
+//#include "qbb-net-device.h"
 #include "ns3/ptr.h"
 #include "ns3/nstime.h"
 #include "ns3/data-rate.h"
@@ -35,6 +36,7 @@ public:
    * \brief Attach a given NetDevice to this channel.
    * \param device pointer to the NetDevice to attach to the channel.
    */
+  //void Attach (Ptr<QbbNetDevice> device);
   void Attach (Ptr<NetDevice> device);
 
   /**

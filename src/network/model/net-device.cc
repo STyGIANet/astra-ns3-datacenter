@@ -20,6 +20,7 @@
 #include "net-device.h"
 
 #include "ns3/log.h"
+#include "ns3/data-rate.h"
 
 namespace ns3
 {
