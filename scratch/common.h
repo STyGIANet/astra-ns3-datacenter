@@ -325,7 +325,7 @@ CalculateRoute(Ptr<Node> host)
                 txDelay[next] =
                     txDelay[now] + packet_payload_size * 1000000000lu * 8 / it->second.bw;
                 bw[next] = std::min(bw[now], it->second.bw);
-                if (next->GetNodeType() == 1)
+                if (next->GetNodeType() == 1 || next->GetNodeType() == 3)
                     q.push_back(next);
             }
             if (d + 1 == dis[next])
