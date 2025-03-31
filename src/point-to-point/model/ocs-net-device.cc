@@ -17,12 +17,10 @@
 #include "ns3/log.h"
 #include "ns3/simulator.h"
 #include "ns3/uinteger.h"
-#include "ns3/data-rate.h"
 #include "ns3/trace-source-accessor.h"
-#include "ns3/mac48-address.h"
 #include "ns3/pointer.h"
 #include "ns3/error-model.h"
-// #include "qbb-net-device.h"
+#include "point-to-point-net-device.h"
 
 
 
@@ -37,42 +35,8 @@ OCSNetDevice::GetTypeId(void)
 {
     static TypeId tid = 
     TypeId("ns3::OCSNetDevice")
-        .SetParent<NetDevice>()
-        .AddConstructor<OCSNetDevice>()
-        .AddAttribute("Mtu",
-                        "The MAC-level Maximum Transmission Unit",
-                        UintegerValue(DEFAULT_MTU),
-                        MakeUintegerAccessor(&OCSNetDevice::SetMtu,
-                                            &OCSNetDevice::GetMtu),
-                        MakeUintegerChecker<uint16_t>())
-        // might be required to work with other NICs etc. 
-        .AddAttribute("Address",
-                        "The MAC address of this device.",
-                        Mac48AddressValue(Mac48Address("ff:ff:ff:ff:ff:ff")),
-                        MakeMac48AddressAccessor(&OCSNetDevice::m_address),
-                        MakeMac48AddressChecker())
-        .AddAttribute("ReceiveErrorModel",
-                        "The receiver error model used to simulate packet loss",
-                        PointerValue(),
-                        MakePointerAccessor(&OCSNetDevice::m_receiveErrorModel),
-                        MakePointerChecker<ErrorModel>())
-        .AddAttribute("DataRate",
-                        "Not used, only for compatibility with other NetDevices. A OCSNetDevice simulates the in- and output ports of a OCSNode that only reflects light. So incoming datarate == outgoing datarate, no transmission delay",
-                        DataRateValue(DataRate("32768b/s")),
-                        MakeDataRateAccessor(&OCSNetDevice::m_bps),
-                        MakeDataRateChecker())
-        // Traces, for point to point channels there is no meaningful difference
-        // between sniffer and promiscious sniffer
-        .AddTraceSource("Sniffer",
-                        "Trace source simulating a non-promiscuous packet sniffer "
-                        "attached to the device",
-                        MakeTraceSourceAccessor(&OCSNetDevice::m_snifferTrace),
-                        "ns3::Packet::TracedCallback")
-        .AddTraceSource("PromiscSniffer",
-                        "Trace source simulating a promiscuous packet sniffer "
-                        "attached to the device",
-                        MakeTraceSourceAccessor(&OCSNetDevice::m_promiscSnifferTrace),
-                        "ns3::Packet::TracedCallback");
+        .SetParent<PointToPointNetDevice>()
+        .AddConstructor<OCSNetDevice>();
     return tid;
 }
 
@@ -96,18 +60,6 @@ OCSNetDevice::DoDispose()
     NetDevice::DoDispose();
 }
 
-void
-OCSNetDevice::SetDataRate(DataRate bps)
-{
-    NS_LOG_FUNCTION(this);
-    m_bps = bps;
-}
-
-DataRate
-OCSNetDevice::GetDataRate(){
-	return m_bps;
-}
-
 bool
 OCSNetDevice::Send (Ptr<Packet> packet, const Address &dest, uint16_t protocolNumber)
 {
@@ -115,6 +67,7 @@ OCSNetDevice::Send (Ptr<Packet> packet, const Address &dest, uint16_t protocolNu
   NS_LOG_LOGIC("p=" << packet << ", dest=" << &dest);
   NS_LOG_LOGIC("UID is " << packet->GetUid());
 
+    NS_LOG_INFO ("OCSNetDevice: in Send()"); //debug
 
   // If the link is down, drop the packet.
   if (!IsLinkUp())
@@ -130,14 +83,22 @@ OCSNetDevice::Send (Ptr<Packet> packet, const Address &dest, uint16_t protocolNu
   // In the point-to-point device, transmission is initiated by TransmitStart,
   // which also schedules a TransmitComplete event after a calculated delay.
   // Here we override that behavior by setting a zero transmission time.
-  Time txTime = NanoSeconds(0);
-  bool result = m_channel->TransmitStart(packet, this, txTime);
+    Time txTime = NanoSeconds(0);
+    bool result;
+    if (DynamicCast<OCSChannel>(m_channel))
+    {
+        result = (DynamicCast<OCSChannel>(m_channel))->TransmitStart(packet, this, txTime);
+    }
+    else
+    {
+        NS_FATAL_ERROR("Unknown Channel type attached to OCSNetDevice");
+    }
+    // result = m_channel->TransmitStart(packet, this, txTime);
 
+    // Optical reflection is essentially instantaneous, so schedule transmit complete immediately.
+    Simulator::ScheduleNow(&OCSNetDevice::TransmitComplete, this);
 
-  // Optical reflection is essentially instantaneous, so schedule transmit complete immediately.
-  Simulator::ScheduleNow(&OCSNetDevice::TransmitComplete, this);
-
-  return result;
+    return result;
 }
 
 void
@@ -167,13 +128,6 @@ OCSNetDevice::Attach(Ptr<OCSChannel> ch)
     return true;
 }
 
-
-void
-OCSNetDevice::SetReceiveErrorModel(Ptr<ErrorModel> em)
-{
-    NS_LOG_FUNCTION(this << em);
-    m_receiveErrorModel = em;
-}
 
 void
 OCSNetDevice::Receive(Ptr<Packet> packet)
@@ -219,16 +173,6 @@ OCSNetDevice::Receive(Ptr<Packet> packet)
     }
 }
 
-
-
-void
-OCSNetDevice::NotifyLinkUp()
-{
-    NS_LOG_FUNCTION(this);
-    m_linkUp = true;
-    m_linkChangeCallbacks();
-}
-
 void
 OCSNetDevice::SetIfIndex(const uint32_t index)
 {
@@ -248,83 +192,12 @@ OCSNetDevice::GetChannel() const
     return m_channel;
 }
 
-//
+// OCS doesn't need addresses, similar to PointToPoint, were it says:
 // This is a point-to-point device, so we really don't need any kind of address
 // information.  However, the base class NetDevice wants us to define the
 // methods to get and set the address.  Rather than be rude and assert, we let
 // clients get and set the address, but simply ignore them.
 
-void
-OCSNetDevice::SetAddress(Address address)
-{
-    NS_LOG_FUNCTION(this << address);
-    m_address = Mac48Address::ConvertFrom(address);
-}
-
-Address
-OCSNetDevice::GetAddress() const
-{
-    return m_address;
-}
-
-bool
-OCSNetDevice::IsLinkUp() const
-{
-    NS_LOG_FUNCTION(this);
-    return m_linkUp;
-}
-
-
-void
-OCSNetDevice::AddLinkChangeCallback(Callback<void> callback)
-{
-    NS_LOG_FUNCTION(this);
-    m_linkChangeCallbacks.ConnectWithoutContext(callback);
-}
-
-//
-// This is a point-to-point device, so every transmission is a broadcast to
-// all of the devices on the network.
-//
-bool
-OCSNetDevice::IsBroadcast() const
-{
-    NS_LOG_FUNCTION(this);
-    return true;
-}
-
-//
-// We don't really need any addressing information since this is a
-// point-to-point device.  The base class NetDevice wants us to return a
-// broadcast address, so we make up something reasonable.
-//
-Address
-OCSNetDevice::GetBroadcast() const
-{
-    NS_LOG_FUNCTION(this);
-    return Mac48Address::GetBroadcast();
-}
-
-bool
-OCSNetDevice::IsMulticast() const
-{
-    NS_LOG_FUNCTION(this);
-    return true;
-}
-
-Address
-OCSNetDevice::GetMulticast(Ipv4Address multicastGroup) const
-{
-    NS_LOG_FUNCTION(this);
-    return Mac48Address("01:00:5e:00:00:00");
-}
-
-Address
-OCSNetDevice::GetMulticast(Ipv6Address addr) const
-{
-    NS_LOG_FUNCTION(this << addr);
-    return Mac48Address("33:33:00:00:00:00");
-}
 
 // use ppp as a basis for simplicity of modeling
 // two devices connected by direct link
@@ -351,51 +224,14 @@ OCSNetDevice::SendFrom(Ptr<Packet> packet,
                                 uint16_t protocolNumber)
 {
     NS_LOG_FUNCTION(this << packet << source << dest << protocolNumber);
+    NS_LOG_WARN ("OCSNetDevice: SendFrom was called but not supported on this NetDevice Type");
     return false;
 }
-
-Ptr<Node>
-OCSNetDevice::GetNode() const
-{
-    return m_node;
-}
-
-void
-OCSNetDevice::SetNode(Ptr<Node> node)
-{
-    NS_LOG_FUNCTION(this);
-    m_node = node;
-}
-bool
-OCSNetDevice::NeedsArp() const
-{
-    NS_LOG_FUNCTION(this);
-    return false;
-}
-
-void
-OCSNetDevice::SetReceiveCallback(NetDevice::ReceiveCallback cb)
-{
-    m_rxCallback = cb;
-}
-
-void
-OCSNetDevice::SetPromiscReceiveCallback(NetDevice::PromiscReceiveCallback cb)
-{
-    m_promiscCallback = cb;
-}
-
-bool
-OCSNetDevice::SupportsSendFrom() const
-{
-    NS_LOG_FUNCTION(this);
-    return false;
-}
-
 
 void
 OCSNetDevice::DoMpiReceive(Ptr<Packet> p)
 {
+    NS_LOG_WARN ("OCSNetDevice: DoMpiReceive called but MPI not fully implemented for OCSNetDevice.");
     NS_LOG_FUNCTION(this << p);
     Receive(p);
 }
@@ -416,21 +252,6 @@ OCSNetDevice::GetRemote() const
     NS_ASSERT(false);
     // quiet compiler.
     return Address();
-}
-
-bool
-OCSNetDevice::SetMtu(uint16_t mtu)
-{
-    NS_LOG_FUNCTION(this << mtu);
-    m_mtu = mtu;
-    return true;
-}
-
-uint16_t
-OCSNetDevice::GetMtu() const
-{
-    NS_LOG_FUNCTION(this);
-    return m_mtu;
 }
 
 } // namespace ns3
