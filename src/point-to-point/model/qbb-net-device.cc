@@ -512,8 +512,24 @@ namespace ns3 {
 		NS_LOG_LOGIC("Schedule TransmitCompleteEvent in " << txCompleteTime.GetSeconds() << "sec");
 		Simulator::Schedule(txCompleteTime, &QbbNetDevice::TransmitComplete, this);
 
-		bool result = m_channel->TransmitStart(p, this, txTime);
-		if (result == false)
+		
+		//bool result = m_channel->TransmitStart(p, this, txTime);
+
+        bool result;
+        if (DynamicCast<OCSChannel>(m_channel))
+        {
+            result = (DynamicCast<OCSChannel>(m_channel))->TransmitStart(p, this, txTime);
+        }
+        else if (DynamicCast<QbbChannel>(m_channel))
+        {
+            result = (DynamicCast<QbbChannel>(m_channel))->TransmitStart(p, this, txTime);
+        }
+        else
+        {
+            NS_FATAL_ERROR("Unknown Channel type attached to OCSNetDevice");
+        }
+
+        if (result == false)
 		{
 			m_phyTxDropTrace(p);
 		}
