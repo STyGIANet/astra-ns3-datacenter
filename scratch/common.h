@@ -322,9 +322,19 @@ CalculateRoute(Ptr<Node> host)
             {
                 dis[next] = d + 1;
                 delay[next] = delay[now] + it->second.delay;
-                txDelay[next] =
+                if (it->second.bw == 0){ // we set bw of OCSNetDevice to 0
+                    txDelay[next] = txDelay[now]; // no further transmission delay for OCSNetDevice
+                    // this assumes uniform bw on all links
+                    // otherwise we'd have to take the bw of originating interface
+                    // instead of this shortcut where we assume 
+                    // transmission bw == bw of receiving host netdevice
+                    bw[next] = std::min(bw[now], nbr2if[next][now].bw); // but remember link bw for rtt/bpd calcs
+                }
+                else {
+                    txDelay[next] =
                     txDelay[now] + packet_payload_size * 1000000000lu * 8 / it->second.bw;
-                bw[next] = std::min(bw[now], it->second.bw);
+                    bw[next] = std::min(bw[now], it->second.bw);
+                }
                 if (next->GetNodeType() == 1 || next->GetNodeType() == 3)
                     q.push_back(next);
             }
@@ -1161,8 +1171,11 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             Ptr<QbbNetDevice> ddev = DynamicCast<QbbNetDevice>(d.Get(1));
 
             s_idx = sdev->GetIfIndex();            
-            s_bw = sdev->GetDataRate().GetBitRate(); 
-            // perhaps its more sensible to use the QbbNetDevice DataRate again here, bcs OCS only reflects and we don't really use/care about DataRate in OCSNetDevice
+            // the OCS port doesn't do serialization, hence no transmission delay
+            // setting to 0 data rate should through division by zero errors
+            // when we accidently do try to calculate a transmission delay
+            s_bw = 0; 
+                
 
             //delay is a channel attribute
             channel_delay = DynamicCast<OCSChannel>(sdev->GetChannel())->GetDelay().GetTimeStep();            
@@ -1179,7 +1192,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             s_bw = sdev->GetDataRate().GetBitRate();
 
             d_idx = ddev->GetIfIndex();
-            d_bw = ddev->GetDataRate().GetBitRate();
+            d_bw = 0; 
         }
         else {
             Ptr<QbbNetDevice> sdev = DynamicCast<QbbNetDevice>(d.Get(0));
