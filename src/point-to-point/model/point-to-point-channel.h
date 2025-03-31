@@ -147,7 +147,7 @@ class PointToPointChannel : public Channel
                                           Time duration,
                                           Time lastBitTime);
 
-  private:
+  protected:
     /** Each point to point link has exactly two net devices. */
     static const std::size_t N_DEVICES = 2;
 
