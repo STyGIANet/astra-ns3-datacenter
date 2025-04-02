@@ -997,7 +997,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         {
             Ptr<OCSNode> sw = CreateObject<OCSNode>();
             if (switch_radix.count(i) > 0)
-                sw->SetAttribute("Radix", UintegerValue(switch_radix.count(i)));
+                sw->SetAttribute("Radix", UintegerValue(switch_radix[i]));
             n.Add(sw);
         }
         else
