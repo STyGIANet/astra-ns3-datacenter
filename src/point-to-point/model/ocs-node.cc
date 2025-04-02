@@ -1,9 +1,10 @@
-#include "ns3/node.h"
-#include "ocs-node.h"
+
 #include "ns3/log.h"
 #include "ns3/simulator.h"
 #include "ns3/nstime.h"
 #include "ns3/uinteger.h"
+#include "ns3/node.h"
+#include "ocs-node.h"
 
 
 NS_LOG_COMPONENT_DEFINE("OCSNode");
@@ -39,32 +40,45 @@ void OCSNode::DoInitialize()
 {
   Node::DoInitialize();
   NS_LOG_INFO("OCSNode: Set node type to : " << m_node_type);
-
-  m_portMap.clear();
-  for (uint32_t i = 0; i < m_radix; i++) {
-    m_portMap[i] = static_cast<uint32_t>(-1); // -1 indicates unmapped.
-  }
   NS_LOG_INFO("OCSNode initialized with radix = " << m_radix);
 }
 
-void OCSNode::SetPortMapping(uint32_t inputPort, uint32_t outputPort)
+void OCSNode::SetPortConnection(uint32_t inputPort, uint32_t outputPort)
 {
   m_portMap[inputPort] = outputPort;
   NS_LOG_INFO("Configured port mapping: " << inputPort << " -> " << outputPort);
   if (!CheckPortMapping()) {
-    NS_LOG_ERROR("OCSNode: Port mapping sanity check failed");
     // TODO Handle error
+  }
+}
+
+void OCSNode::SetPortMap(const std::unordered_map<uint32_t, uint32_t>& newMapping){
+  NS_LOG_FUNCTION(this << &newMapping);
+
+  if (newMapping.size() != m_radix){
+    NS_LOG_WARN("Size of PortMap passed to OCSNode::SetPortMap != Radix - some entries are missing or superflous.");
+    return; //don't set to this new wrong port map
+  }
+  
+  // TODO: maybe there's a better way for a deep copy 
+  for (const auto& entry : newMapping) {
+    uint32_t inPort = entry.first;
+    uint32_t outPort = entry.second;
+    m_portMap[inPort] = outPort;
+    NS_LOG_LOGIC("Reconfigured port mapping: " << inPort << " -> " << outPort);
   }
 }
 
 bool OCSNode::CheckPortMapping() const
 {
+  NS_LOG_FUNCTION_NOARGS();
+
   for (uint32_t i = 0; i < m_radix; i++) {
     auto it = m_portMap.find(i);
     if (it == m_portMap.end())
       continue;
     uint32_t mappedPort = it->second;
-    // Check that mappedPort is either -1 (or rather UINTMAX, unmapped) or within a valid range.
+    // Check that mappedPort is either -1 (or rather UINTMAX) meaning unmapped or within a valid range.
     if (mappedPort != static_cast<uint32_t>(-1) && mappedPort >= m_radix) {
       NS_LOG_ERROR("Invalid mapping: port " << i << " maps to invalid port " << mappedPort);
       return false;
@@ -85,6 +99,7 @@ bool OCSNode::CheckPortMapping() const
 
 bool OCSNode::ReceiveFromDevice(Ptr<NetDevice> device, Ptr<Packet> packet)
 {
+  NS_LOG_FUNCTION(this << device << packet);
   if (m_inReconfig) {
     NS_LOG_WARN("OCSNode is reconfiguring; dropping packet");
     return false;
@@ -107,20 +122,20 @@ bool OCSNode::ReceiveFromDevice(Ptr<NetDevice> device, Ptr<Packet> packet)
 
 void OCSNode::Reconfigure(const std::unordered_map<uint32_t, uint32_t>& newMapping)
 {
+  NS_LOG_FUNCTION(this << &newMapping);
+
   NS_LOG_INFO("Starting reconfiguration. All packets during reconfiguration will be lost.");
   m_inReconfig = true;
+  
   // Schedule completion of reconfiguration after m_reconfigTime.
   Simulator::Schedule(m_reconfigTime, &OCSNode::CompleteReconfiguration, this, newMapping);
 }
 
 void OCSNode::CompleteReconfiguration(const std::unordered_map<uint32_t, uint32_t>& newMapping)
 {
-  for (const auto& entry : newMapping) {
-    uint32_t inPort = entry.first;
-    uint32_t outPort = entry.second;
-    m_portMap[inPort] = outPort;
-    NS_LOG_INFO("Reconfigured port mapping: " << inPort << " -> " << outPort);
-  }
+  NS_LOG_FUNCTION(this << &newMapping);
+  SetPortMap(newMapping);
+
   if (!CheckPortMapping()) {
     NS_LOG_ERROR("New port mapping failed sanity check");
   } else {

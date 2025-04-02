@@ -1055,12 +1055,20 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
                     }
                     NS_LOG_INFO("Scheduling reconfiguration for switch "
                                 << switchId << " at timestamp " << timestamp);
-                    // Schedule the reconfiguration event at the given timestamp (in
-                    // nanoseconds)
-                    Simulator::Schedule(NanoSeconds(timestamp),
-                                        &OCSNode::Reconfigure,
-                                        ocsNode,
-                                        newMapping);
+
+                    // Inital config doesn't need reconfigDelay
+                    if (timestamp == 0)
+                    {
+                        ocsNode->SetPortMap(newMapping);
+                    }
+                    else
+                    {
+                        // Schedule the reconfiguration event at the given timestamp
+                        Simulator::Schedule(NanoSeconds(timestamp),
+                                            &OCSNode::Reconfigure,
+                                            ocsNode,
+                                            newMapping);
+                    }
                 }
             }
             else

@@ -3,7 +3,7 @@
   "reconfig_time_ns": 3700,
   "configs": [
     {
-      "start_time": 1,
+      "start_time": 0,
       "port_mapping": {
         "0": 1,
         "1": 0,

@@ -14,14 +14,19 @@ public:
   static TypeId GetTypeId (void);
   OCSNode();
 
-  // Set a single port mapping and check sanity (symmetric and valid)
-  void SetPortMapping(uint32_t inputPort, uint32_t outputPort);
+  // set local PortMap/configuration according to passed newMapping immediately
+  void SetPortMap(const std::unordered_map<uint32_t, uint32_t>& newMapping);
 
-  // Reconfiguration process: drop packets during reconfiguration and then update port mapping.
+  // Set a single port mapping and check sanity (symmetric and valid)
+  void SetPortConnection(uint32_t inputPort, uint32_t outputPort);
+
+  // Reconfiguration process: drop packets during reconfiguration
+  // and then update port mapping after reconfigDelay
   void Reconfigure(const std::unordered_map<uint32_t, uint32_t>& newMapping);
   void CompleteReconfiguration(const std::unordered_map<uint32_t, uint32_t>& newMapping);
 
-  // Packet forwarding: if reconfiguration is active, drop packets.
+  // Packet forwarding according to PortMap
+  // if reconfiguration is active, drop packets.
   bool ReceiveFromDevice(Ptr<NetDevice> device, Ptr<Packet> packet);
 
 protected:
