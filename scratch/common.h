@@ -919,7 +919,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
     bool isOCS = false;
 
     json topology;
-    if (topology_file_format == "json")// from ns3 config file
+    if (topology_file_format == "json")
     { 
         try
         {
@@ -1114,6 +1114,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         uint32_t src, dst;
         std::string data_rate, link_delay;
         double error_rate;
+        uint32_t ocs_port = UINT32_MAX;
         if (topology_file_format == "json"){
             auto link = topology["links"][i];
             src = link["from"];
@@ -1121,13 +1122,15 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             data_rate = link["bandwidth"];
             link_delay = link["latency"];
             error_rate = link["error_rate"];
+            ocs_port = link["switchport"];
         }
         else{
             topof >> src >> dst >> data_rate >> link_delay >> error_rate;
         }
         Ptr<Node> snode = n.Get(src), dnode = n.Get(dst);
-        bool snodeIsOCS = (DynamicCast<OCSNode>(snode) != nullptr);
-        bool dnodeIsOCS = (DynamicCast<OCSNode>(dnode) != nullptr);
+
+        Ptr<OCSNode> snodeIsOCS = (DynamicCast<OCSNode>(snode));
+        Ptr<OCSNode> dnodeIsOCS = (DynamicCast<OCSNode>(dnode));
 
         qbb.SetDeviceAttribute("DataRate", StringValue(data_rate));
         qbb.SetChannelAttribute("Delay", StringValue(link_delay));
@@ -1190,6 +1193,10 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
 
             d_idx = ddev->GetIfIndex();
             d_bw = ddev->GetDataRate().GetBitRate();
+
+            // Check that topologyfile port == index in node.m_devices
+            // because OCSNode chooses outDev as m_devices[portNumber] in GetDevice()
+            NS_ASSERT(snodeIsOCS->VerifyDevicePortNum(sdev, ocs_port)); 
         }
         else if (dnodeIsOCS){
             Ptr<QbbNetDevice> sdev = DynamicCast<QbbNetDevice>(d.Get(0));
@@ -1200,7 +1207,10 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             s_bw = sdev->GetDataRate().GetBitRate();
 
             d_idx = ddev->GetIfIndex();
-            d_bw = 0; 
+            d_bw = 0;
+
+            bool portNumCorrect = dnodeIsOCS->VerifyDevicePortNum(ddev, ocs_port);
+            //NS_ASSERT(portNumCorrect); 
         }
         else {
             Ptr<QbbNetDevice> sdev = DynamicCast<QbbNetDevice>(d.Get(0));
@@ -1224,7 +1234,6 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         nbr2if[dnode][snode].up = true;
         nbr2if[dnode][snode].delay = channel_delay;
         nbr2if[dnode][snode].bw = d_bw;
-        NS_LOG_INFO("Finished Setup of nbr2if");
         fflush(stdout);
         // This is just to set up the connectivity between nodes. The IP addresses
         // are useless

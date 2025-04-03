@@ -5,6 +5,7 @@
 #include "ns3/uinteger.h"
 #include "ns3/node.h"
 #include "ocs-node.h"
+#include "ocs-net-device.h"
 
 
 NS_LOG_COMPONENT_DEFINE("OCSNode");
@@ -93,7 +94,7 @@ bool OCSNode::CheckPortMapping() const
       }
     }
   }
-  NS_LOG_INFO("Port mapping passed sanity check");
+  NS_LOG_LOGIC("Port mapping passed sanity check");
   return true;
 }
 
@@ -105,11 +106,19 @@ bool OCSNode::ReceiveFromDevice(Ptr<NetDevice> device, Ptr<Packet> packet)
     return false;
   }
 
-  uint32_t inPort = device->GetIfIndex();
+  // the m_devices vector has an additional loopback at index 0 from the InternetStackHelper,
+  // so we shift index as portNum + 1
+  uint32_t inPort = device->GetIfIndex() - 1;
   auto it = m_portMap.find(inPort);
   if (it != m_portMap.end()) {
-    uint32_t outPort = it->second;
-    Ptr<NetDevice> outDevice = GetDevice(outPort);
+    size_t outPort = static_cast<size_t> (it->second);
+
+    // same shift as for inPort
+    if ( outPort + 1 >= m_devices.size() ){
+      NS_LOG_WARN("OCSNode tried to send via port that doesn't have a NetDevice. Not Transmitting");
+      return false;
+    }
+    Ptr<OCSNetDevice> outDevice = DynamicCast<OCSNetDevice>( GetDevice(outPort + 1) );
     if (outDevice) {
       NS_LOG_INFO("OCSNode forwarding packet from port " << inPort << " to " << outPort);
       outDevice->Send(packet, outDevice->GetAddress(), 0);
@@ -142,6 +151,22 @@ void OCSNode::CompleteReconfiguration(const std::unordered_map<uint32_t, uint32_
     NS_LOG_INFO("Reconfiguration completed successfully.");
   }
   m_inReconfig = false;
+}
+
+bool OCSNode::VerifyDevicePortNum(Ptr<NetDevice> dev, uint32_t portNum){
+  NS_LOG_FUNCTION(this << dev << portNum);
+
+  // Check range [0,radix]
+  bool result = (portNum >= 0 && portNum < m_radix);
+
+  // Check that the devices own interface number == portNum (set by Node->AddDevice)
+  // index shift due to loopback at index 0 of the Node's interfaces
+  result = result && (DynamicCast<OCSNetDevice>(dev)->GetIfIndex() == portNum + 1);
+
+  // Check that this node's index for the given NetDevice == portNum + 1
+  result = result && (GetDevice(portNum + 1) == dev);
+
+  return result;
 }
 
 } // namespace ns3

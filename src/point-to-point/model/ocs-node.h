@@ -29,6 +29,8 @@ public:
   // if reconfiguration is active, drop packets.
   bool ReceiveFromDevice(Ptr<NetDevice> device, Ptr<Packet> packet);
 
+  bool VerifyDevicePortNum(Ptr<NetDevice> dev, uint32_t portNum);
+
 protected:
   virtual void DoInitialize (void) override;
 
