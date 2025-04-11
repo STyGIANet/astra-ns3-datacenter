@@ -115,12 +115,12 @@ bool OCSNode::ReceiveFromDevice(Ptr<NetDevice> device, Ptr<Packet> packet)
 
     // same shift as for inPort
     if ( outPort + 1 >= m_devices.size() ){
-      NS_LOG_WARN("OCSNode tried to send via port that doesn't have a NetDevice. Not Transmitting");
+      NS_LOG_WARN(Simulator::Now().GetTimeStep() << ": OCSNode tried to send via port that doesn't have a NetDevice, Port: " << inPort << " . Not Transmitting");
       return false;
     }
     Ptr<OCSNetDevice> outDevice = DynamicCast<OCSNetDevice>( GetDevice(outPort + 1) );
     if (outDevice) {
-      NS_LOG_INFO("OCSNode forwarding packet from port " << inPort << " to " << outPort);
+      NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": OCSNode forwarding packet from port " << inPort << " to " << outPort);
       outDevice->Send(packet, outDevice->GetAddress(), 0);
       return true;
     }
@@ -133,7 +133,7 @@ void OCSNode::Reconfigure(const std::unordered_map<uint32_t, uint32_t>& newMappi
 {
   NS_LOG_FUNCTION(this << &newMapping);
 
-  NS_LOG_INFO("Starting reconfiguration. All packets during reconfiguration will be lost.");
+  NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": Starting reconfiguration. All packets during reconfiguration will be lost.");
   m_inReconfig = true;
   
   // Schedule completion of reconfiguration after m_reconfigTime.
@@ -148,7 +148,7 @@ void OCSNode::CompleteReconfiguration(const std::unordered_map<uint32_t, uint32_
   if (!CheckPortMapping()) {
     NS_LOG_ERROR("New port mapping failed sanity check");
   } else {
-    NS_LOG_INFO("Reconfiguration completed successfully.");
+    NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": Reconfiguration completed successfully.");
   }
   m_inReconfig = false;
 }

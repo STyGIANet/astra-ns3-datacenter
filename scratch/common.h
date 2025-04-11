@@ -1073,7 +1073,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             }
             else
             {
-                NS_LOG_ERROR("Switch with id "
+                NS_FATAL_ERROR("Switch with id "
                              << switchId << " is not an OCSNode. Cannot schedule reconfiguration.");
             }
         }

@@ -67,8 +67,6 @@ OCSNetDevice::Send (Ptr<Packet> packet, const Address &dest, uint16_t protocolNu
   NS_LOG_LOGIC("p=" << packet << ", dest=" << &dest);
   NS_LOG_LOGIC("UID is " << packet->GetUid());
 
-    NS_LOG_INFO ("OCSNetDevice: in Send()"); //debug
-
   // If the link is down, drop the packet.
   if (!IsLinkUp())
     {
@@ -108,7 +106,7 @@ OCSNetDevice::TransmitComplete()
     // In the base device, TransmitComplete notifies the end of a packet transmission.
     // Here this is only a log intially, and placeholder for possible further functionality
 
-    NS_LOG_INFO("TransmitComplete on OCSNetDevice"); // only for very intial tests
+    //NS_LOG_INFO("TransmitComplete on OCSNetDevice"); // only for very intial tests
     // m_macTxEndTrace(m_currentPkt);
 
     // No further packet dequeuing occurs as this device is not using a transmit queue.
@@ -156,7 +154,7 @@ OCSNetDevice::Receive(Ptr<Packet> packet)
         Ptr<OCSNode> ocsNode = DynamicCast<OCSNode>(node);
         if (ocsNode)
         {
-            NS_LOG_INFO("OCSNetDevice forwarding packet to parent OCSNode");
+            //NS_LOG_INFO("OCSNetDevice forwarding packet to parent OCSNode");
             bool result = ocsNode->ReceiveFromDevice(Ptr<NetDevice>(this), packet);
             if (!result)
             {

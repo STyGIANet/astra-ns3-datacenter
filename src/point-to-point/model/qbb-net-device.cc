@@ -302,7 +302,7 @@ namespace ns3 {
 				// update for the next avail time
 				m_rdmaPktSent(lastQp, p, m_tInterframeGap);
 			}else { // no packet to send
-				NS_LOG_INFO("PAUSE prohibits send at node " << m_node->GetId());
+				NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": PAUSE prohibits send at node " << m_node->GetId() << " (no packet)");
 				Time t = Simulator::GetMaximumSimulationTime();
 				for (uint32_t i = 0; i < m_rdmaEQ->GetFlowCount(); i++){
 					Ptr<RdmaQueuePair> qp = m_rdmaEQ->GetQp(i);
@@ -336,7 +336,7 @@ namespace ns3 {
 				TransmitStart(p);
 				return;
 			}else{ //No queue can deliver any packet
-				NS_LOG_INFO("PAUSE prohibits send at node " << m_node->GetId());
+				NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": PAUSE prohibits send at node " << m_node->GetId() << "(no queue)");
 				if (m_node->GetNodeType() == 0 && m_qcnEnabled){ //nothing to send, possibly due to qcn flow control, if so reschedule sending
 					Time t = Simulator::GetMaximumSimulationTime();
 					for (uint32_t i = 0; i < m_rdmaEQ->GetFlowCount(); i++){

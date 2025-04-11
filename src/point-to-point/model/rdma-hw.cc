@@ -604,7 +604,38 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 }
 
 int RdmaHw::Receive(Ptr<Packet> p, CustomHeader &ch){
-	if (ch.l3Prot == 0x11){ // UDP
+    // Verify destination IP matches one of this nodes IP addresses
+	// Usually the important address is ipv4->GetAddress(1,0).GetLocal().m_address
+    Ptr<Ipv4> ipv4 = m_node->GetObject<Ipv4>();
+    bool destinedHere = false;
+    for (uint32_t i = 0; i < ipv4->GetNInterfaces(); i++)
+    {
+        for (uint32_t j = 0; j < ipv4->GetNAddresses(i); j++)
+        {
+            Ipv4Address addr = ipv4->GetAddress(i, j).GetLocal();
+            if (addr == Ipv4Address(ch.dip))
+            {
+                destinedHere = true;
+                break;
+            }
+        }
+        if (destinedHere)
+            break;
+    }
+
+    if (!destinedHere)
+    {
+        printf("%lu : RdmaHw:: Packet not destined for this node, dropping \n", Simulator::Now().GetTimeStep());
+
+		// TODO
+		// Add drop trace source ?
+		// maybe send NACK to inidicate error ?
+
+        return 0;
+    }
+
+
+    if (ch.l3Prot == 0x11){ // UDP
 		ReceiveUdp(p, ch);
 	}else if (ch.l3Prot == 0xFF){ // CNP
 		ReceiveCnp(p, ch);
