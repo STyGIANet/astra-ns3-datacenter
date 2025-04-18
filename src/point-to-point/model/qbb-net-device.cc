@@ -475,7 +475,7 @@ namespace ns3 {
 	{
 		NS_LOG_FUNCTION(this << &ch);
 		m_channel = ch;
-		m_channel->Attach(this);
+		ch->Attach(this);
 		NotifyLinkUp();
 		return true;
 	}
