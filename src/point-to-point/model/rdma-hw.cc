@@ -12,6 +12,8 @@
 #include "ppp-header.h"
 #include "qbb-header.h"
 #include "cn-header.h"
+#include <cstdlib>      // for std::getenv
+#include "ns3/node-list.h"
 
 namespace ns3{
 
@@ -249,6 +251,33 @@ uint32_t RdmaHw::GetNicIdxOfQp(Ptr<RdmaQueuePair> qp){
 uint64_t RdmaHw::GetQpKey(uint32_t dip, uint16_t sport, uint16_t pg){
 	return ((uint64_t)dip << 32) | ((uint64_t)sport << 16) | (uint64_t)pg;
 }
+Ptr<ns3::QbbNetDevice> RdmaHw::FindQbbNetDeviceByIp(const ns3::Ipv4Address& addr)
+{
+  for (int i = 0; i < NodeList::GetNNodes(); i++)
+    {
+	  Ptr<ns3::Node> node = NodeList::GetNode(i);
+      Ptr<ns3::Ipv4> ipv4 = node->GetObject<ns3::Ipv4>();
+      if (!ipv4) continue;
+      for (uint32_t i = 0; i < ipv4->GetNInterfaces(); ++i)
+        {
+          for (uint32_t j = 0; j < ipv4->GetNAddresses(i); ++j)
+            {
+              if (ipv4->GetAddress(i,j).GetLocal() == addr)
+                {
+                  // now look for a QbbNetDevice on that node
+                  for (uint32_t d = 0; d < node->GetNDevices(); ++d)
+                    {
+                      Ptr<ns3::NetDevice> nd = node->GetDevice(d);
+                      Ptr<ns3::QbbNetDevice> q = nd->GetObject<ns3::QbbNetDevice>();
+                      if (q) return q;
+                    }
+                }
+            }
+        }
+    }
+  return nullptr;
+}
+
 Ptr<RdmaQueuePair> RdmaHw::GetQp(uint32_t dip, uint16_t sport, uint16_t pg){
 	uint64_t key = GetQpKey(dip, sport, pg);
 	auto it = m_qpMap.find(key);
@@ -452,9 +481,40 @@ int RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader &ch){
 		newp->AddHeader(head);
 		AddHeader(newp, 0x800);	// Attach PPP header
 		// send
-		uint32_t nic_idx = GetNicIdxOfRxQp(rxQp);
-		m_nic[nic_idx].dev->RdmaEnqueueHighPrioQ(newp);
-		m_nic[nic_idx].dev->TriggerTransmit();
+		const char* oobAckDelay =  std::getenv("OOB_ACK_DELAY");
+        if (oobAckDelay != nullptr)
+        {
+			//printf("debug: oobAckDelay != 0 \n");
+			// secondary ack path: deliver directly to the original sender's QbbNetDevice after fixed delay; simple OoB simulation
+            ns3::Ipv4Address srcIp(ch.sip);
+            Ptr<ns3::QbbNetDevice> srcDev = FindQbbNetDeviceByIp(srcIp);
+
+			// fixed delay according to envvar to simulate the out‐of‐band link
+			int delay = std::atoi(oobAckDelay);
+            if (srcDev && delay > 0)
+            {
+                auto time_delay = ns3::NanoSeconds(delay);
+                uint32_t ctx = srcDev->GetNode()->GetId();
+                ns3::Simulator::ScheduleWithContext(ctx,
+                                                    time_delay,
+                                                    &ns3::QbbNetDevice::Receive,
+                                                    srcDev,
+                                                    newp);
+            }
+            else
+            {
+                // fallback to dropping or normal path
+                fprintf(stderr, "!! Attempted to use secondary ack network but can't find valid qbbNetDevice or delay is 0 !!");
+            }
+
+        }
+        else
+        {
+			// normal path: enqueue on the local qbb netdevice and let the channel deliver it
+            uint32_t nic_idx = GetNicIdxOfRxQp(rxQp);
+            m_nic[nic_idx].dev->RdmaEnqueueHighPrioQ(newp);
+            m_nic[nic_idx].dev->TriggerTransmit();
+        }
 	}
 	return 0;
 }
