@@ -53,7 +53,7 @@ void OCSNode::SetPortConnection(uint32_t inputPort, uint32_t outputPort)
   }
 }
 
-void OCSNode::SetPortMap(const std::unordered_map<uint32_t, uint32_t>& newMapping){
+void OCSNode::SetPortMap(const std::map<uint32_t, uint32_t>& newMapping){
   NS_LOG_FUNCTION(this << &newMapping);
 
   if (newMapping.size() != m_radix){
@@ -129,7 +129,7 @@ bool OCSNode::ReceiveFromDevice(Ptr<NetDevice> device, Ptr<Packet> packet)
   return false;
 }
 
-void OCSNode::Reconfigure(const std::unordered_map<uint32_t, uint32_t>& newMapping)
+void OCSNode::Reconfigure(const std::map<uint32_t, uint32_t>& newMapping)
 {
   NS_LOG_FUNCTION(this << &newMapping);
 
@@ -140,7 +140,7 @@ void OCSNode::Reconfigure(const std::unordered_map<uint32_t, uint32_t>& newMappi
   Simulator::Schedule(m_reconfigTime, &OCSNode::CompleteReconfiguration, this, newMapping);
 }
 
-void OCSNode::CompleteReconfiguration(const std::unordered_map<uint32_t, uint32_t>& newMapping)
+void OCSNode::CompleteReconfiguration(const std::map<uint32_t, uint32_t>& newMapping)
 {
   NS_LOG_FUNCTION(this << &newMapping);
   SetPortMap(newMapping);
@@ -167,6 +167,11 @@ bool OCSNode::VerifyDevicePortNum(Ptr<NetDevice> dev, uint32_t portNum){
   result = result && (GetDevice(portNum + 1) == dev);
 
   return result;
+}
+
+Time OCSNode::GetReconfigDelay(){
+  NS_LOG_FUNCTION(this);
+  return m_reconfigTime;
 }
 
 } // namespace ns3

@@ -38,7 +38,7 @@
 #include <iostream>
 #include <json/json.hpp>
 #include <time.h>
-#include <unordered_map>
+#include <map>
 
 using json = nlohmann::json;
 using namespace ns3;
@@ -1042,7 +1042,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
                 for (auto& config : configs)
                 {
                     uint64_t timestamp = config["start_time"];
-                    std::unordered_map<uint32_t, uint32_t> newMapping;
+                    std::map<uint32_t, uint32_t> newMapping;
                     // Iterate over the port_mapping object
                     for (auto it = config["port_mapping"].begin();
                          it != config["port_mapping"].end();
