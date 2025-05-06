@@ -40,6 +40,8 @@
 #include <time.h>
 #include <map>
 
+#include "astra-sim/system/scheduling/ReconfigSched.h"
+
 using json = nlohmann::json;
 using namespace ns3;
 using namespace std;
@@ -886,6 +888,68 @@ SetConfig()
     }
 }
 
+void setupOCS(json reconfigJson, NodeContainer n){
+
+    uint32_t switchId = reconfigJson["switch_id"];
+    uint64_t reconfigTime = reconfigJson["reconfig_time_ns"];
+    auto configs = reconfigJson["configs"];
+    bool demandAware = reconfigJson["demand_aware"];
+
+    // Find the node corresponding to switchId
+    Ptr<Node> node = n.Get(switchId);
+    Ptr<OCSNode> ocsNode = DynamicCast<OCSNode>(node);
+    if (!ocsNode)
+    {
+        NS_FATAL_ERROR("Switch with id " << switchId << " is not an OCSNode. Cannot schedule reconfiguration.");
+    }
+
+    ocsNode->SetAttribute("ReconfigTime", TimeValue(NanoSeconds(reconfigTime)));
+
+    // if not demand-aware: schedule given port mappings at fixed times
+    if (demandAware)
+    {
+        printf("Found Demand-Aware reconfiguration setting");
+        // scheduler that dynamically decides if and which reconfiguration would be beneficial between each round of a collective
+        AstraSim::reconfigSched& sched = AstraSim::reconfigSched::getScheduler();
+        sched.setOCSNode(GetPointer(ocsNode)); // increases ref count on ocsNode, reconfigSched needs to decrement on exit
+        sched.setDaMode(true); // ensures that collective algorithms coordinate with demand-aware scheduling, e.g. wait reconfigDelay ns between rounds when require     
+
+    }
+    else // demand-oblivious with static (given) timetable of fixed reconfigurations
+    {
+        // Schedule each reconfiguration event
+        for (auto& config : configs)
+        {
+            uint64_t timestamp = config["start_time"];
+            std::map<uint32_t, uint32_t> newMapping;
+            // Iterate over the port_mapping object
+            for (auto it = config["port_mapping"].begin(); it != config["port_mapping"].end();
+                    ++it)
+            {
+                // Convert key to integer
+                uint32_t inPort = std::stoul(it.key());
+                uint32_t outPort = it.value();
+                newMapping[inPort] = outPort;
+            }
+            NS_LOG_INFO("Scheduling reconfiguration for switch " << switchId << " at timestamp " << timestamp);
+
+            // Inital config doesn't need reconfigDelay
+            if (timestamp == 0)
+            {
+                ocsNode->SetPortMap(newMapping);
+            }
+            else
+            {
+                // Schedule the reconfiguration event at the given timestamp
+                Simulator::Schedule(NanoSeconds(timestamp),
+                                    &OCSNode::Reconfigure,
+                                    ocsNode,
+                                    newMapping);
+            }
+        }
+    }
+}
+
 bool
 SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
 {
@@ -1006,77 +1070,25 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         }
     }
 
-    // atm OCS requires _json_ physical topology with its extra info, such as switch radix
+    // atm OCS requires _json_ topology file with its extra info, such as switch radix
     if (topology["format"] == "OCS")
     {
-        std::ifstream reconfigFile(reconfig_file); // c_str ?
+        std::ifstream reconfigFile(reconfig_file);
         if (!reconfigFile)
-            NS_LOG_WARN("Could not open reconfiguration schedule file. Skipping "
-                        "reconfiguration scheduling.");
-        else
+            NS_FATAL_ERROR("Could not open reconfiguration schedule file");
+
+        json reconfigJson;
+        try
         {
-            json reconfigJson;
-            try
-            {
-                reconfigFile >> reconfigJson;
-            }
-            catch (const json::parse_error& e)
-            {
-                NS_LOG_ERROR("JSON parsing error in reconfiguration schedule: " << e.what());
-                NS_FATAL_ERROR("Invalid JSON format in reconfiguration schedule.");
-            }
-
-            uint32_t switchId = reconfigJson["switch_id"];
-            uint64_t reconfigTime = reconfigJson["reconfig_time_ns"];
-            auto configs = reconfigJson["configs"];
-
-            // Find the node corresponding to switchId and ensure it is an OCSNode
-            Ptr<Node> node = n.Get(switchId);
-            Ptr<OCSNode> ocsNode = DynamicCast<OCSNode>(node);
-            if (ocsNode)
-            {
-                // Set the OCSNode's reconfiguration time attribute
-                ocsNode->SetAttribute("ReconfigTime", TimeValue(NanoSeconds(reconfigTime)));
-
-                // Schedule each reconfiguration event
-                for (auto& config : configs)
-                {
-                    uint64_t timestamp = config["start_time"];
-                    std::map<uint32_t, uint32_t> newMapping;
-                    // Iterate over the port_mapping object
-                    for (auto it = config["port_mapping"].begin();
-                         it != config["port_mapping"].end();
-                         ++it)
-                    {
-                        // Convert key (string) to integer for input port
-                        uint32_t inPort = std::stoul(it.key());
-                        uint32_t outPort = it.value();
-                        newMapping[inPort] = outPort;
-                    }
-                    NS_LOG_INFO("Scheduling reconfiguration for switch "
-                                << switchId << " at timestamp " << timestamp);
-
-                    // Inital config doesn't need reconfigDelay
-                    if (timestamp == 0)
-                    {
-                        ocsNode->SetPortMap(newMapping);
-                    }
-                    else
-                    {
-                        // Schedule the reconfiguration event at the given timestamp
-                        Simulator::Schedule(NanoSeconds(timestamp),
-                                            &OCSNode::Reconfigure,
-                                            ocsNode,
-                                            newMapping);
-                    }
-                }
-            }
-            else
-            {
-                NS_FATAL_ERROR("Switch with id "
-                             << switchId << " is not an OCSNode. Cannot schedule reconfiguration.");
-            }
+            reconfigFile >> reconfigJson;
         }
+        catch (const json::parse_error& e)
+        {
+            NS_LOG_ERROR("JSON parsing error in reconfiguration schedule: " << e.what());
+            NS_FATAL_ERROR("Invalid JSON format in reconfiguration schedule.");
+        }
+
+        setupOCS(reconfigJson, n);
     }
 
     NS_LOG_INFO("Create nodes.");
