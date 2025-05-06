@@ -908,12 +908,11 @@ void setupOCS(json reconfigJson, NodeContainer n){
     // if not demand-aware: schedule given port mappings at fixed times
     if (demandAware)
     {
-        printf("Found Demand-Aware reconfiguration setting");
+        printf("Found Demand-Aware reconfiguration setting \n");
         // scheduler that dynamically decides if and which reconfiguration would be beneficial between each round of a collective
         AstraSim::reconfigSched& sched = AstraSim::reconfigSched::getScheduler();
         sched.setOCSNode(GetPointer(ocsNode)); // increases ref count on ocsNode, reconfigSched needs to decrement on exit
         sched.setDaMode(true); // ensures that collective algorithms coordinate with demand-aware scheduling, e.g. wait reconfigDelay ns between rounds when require     
-
     }
     else // demand-oblivious with static (given) timetable of fixed reconfigurations
     {
@@ -1139,6 +1138,13 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         else{
             topof >> src >> dst >> data_rate >> link_delay >> error_rate;
         }
+
+        // assuming completely uniform link bandwidths, we are just using the first
+        if(i == 0){
+            auto& sched = AstraSim::reconfigSched::getScheduler();
+            sched.setBandwidth((uint64_t) std::stoull(data_rate));
+        }
+
         Ptr<Node> snode = n.Get(src), dnode = n.Get(dst);
 
         Ptr<OCSNode> snodeIsOCS = (DynamicCast<OCSNode>(snode));
