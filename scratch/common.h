@@ -33,6 +33,7 @@
 #include <ns3/rdma.h>
 #include <ns3/sim-setting.h>
 #include <ns3/switch-node.h>
+#include "ns3/data-rate.h"
 
 #include <fstream>
 #include <iostream>
@@ -1142,7 +1143,9 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         // assuming completely uniform link bandwidths, we are just using the first
         if(i == 0){
             auto& sched = AstraSim::reconfigSched::getScheduler();
-            sched.setBandwidth((uint64_t) std::stoull(data_rate));
+            //using ns3 parsing to get bps
+            DataRate rate = DataRate(data_rate);
+            sched.setBandwidth(rate.GetBitRate());
         }
 
         Ptr<Node> snode = n.Get(src), dnode = n.Get(dst);

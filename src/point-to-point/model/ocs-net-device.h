@@ -87,9 +87,8 @@ class OCSNetDevice : public PointToPointNetDevice
     void TransmitComplete();
 
     /**
-     * Unused because we don't have a transmission delay, simply for compatibility.
-     * The data rate that the Net Device uses to simulate packet
-     * transmission timing.
+     * Unused because we don't have a transmission delay in OCS, simply for compatibility.
+     * Usually: the data rate that the Net Device uses to simulate packet transmission delay.
      */
     DataRate m_bps;
 
