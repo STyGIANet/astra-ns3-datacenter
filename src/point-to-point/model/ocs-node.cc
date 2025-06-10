@@ -56,8 +56,8 @@ void OCSNode::SetPortConnection(uint32_t inputPort, uint32_t outputPort)
 void OCSNode::SetPortMap(const std::map<uint32_t, uint32_t>& newMapping){
   NS_LOG_FUNCTION(this << &newMapping);
 
-  if (newMapping.size() != m_radix){
-    NS_LOG_WARN("Size of PortMap passed to OCSNode::SetPortMap != Radix - some entries are missing or superflous.");
+  if (newMapping.size() > m_radix){
+    NS_LOG_WARN("Size of PortMap passed to OCSNode::SetPortMap > Radix - some entries are missing or superflous.");
     return; //don't set to this new wrong port map
   }
   
