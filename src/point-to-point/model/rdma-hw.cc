@@ -14,6 +14,9 @@
 #include "cn-header.h"
 #include <cstdlib>      // for std::getenv
 #include "ns3/node-list.h"
+#include "ns3/log.h"
+
+NS_LOG_COMPONENT_DEFINE("RdmaHw");
 
 namespace ns3{
 
@@ -227,7 +230,7 @@ void RdmaHw::Setup(QpCompleteCallback cb){
 		// share data with NIC
 		dev->m_rdmaEQ->m_qpGrp = m_nic[i].qpGrp;
 		// setup callback
-		dev->m_rdmaReceiveCb = MakeCallback(&RdmaHw::Receive, this);
+		dev->m_rdmaReceiveCb = MakeCallback(&RdmaHw::ReceiveWithNetDev, this);
 		dev->m_rdmaLinkDownCb = MakeCallback(&RdmaHw::SetLinkDown, this);
 		dev->m_rdmaPktSent = MakeCallback(&RdmaHw::PktSent, this);
 		// config NIC
@@ -491,7 +494,7 @@ int RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader &ch){
 
 			// fixed delay according to envvar to simulate the out‐of‐band link
 			int delay = std::atoi(oobAckDelay);
-            if (srcDev && delay > 0)
+            if (srcDev && delay >= 0)
             {
                 auto time_delay = ns3::NanoSeconds(delay);
                 uint32_t ctx = srcDev->GetNode()->GetId();
@@ -664,7 +667,22 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 }
 
 int RdmaHw::Receive(Ptr<Packet> p, CustomHeader &ch){
-    // Verify destination IP matches one of this nodes IP addresses
+
+    if (ch.l3Prot == 0x11){ // UDP
+		ReceiveUdp(p, ch);
+	}else if (ch.l3Prot == 0xFF){ // CNP
+		ReceiveCnp(p, ch);
+	}else if (ch.l3Prot == 0xFD){ // NACK
+		ReceiveAck(p, ch);
+	}else if (ch.l3Prot == 0xFC){ // ACK
+		ReceiveAck(p, ch);
+	}
+	return 0;
+}
+
+int RdmaHw::ReceiveWithNetDev(Ptr<Packet> p, CustomHeader& ch, Ptr<QbbNetDevice> dev)
+{
+	// Verify destination IP matches one of this nodes IP addresses
 	// Usually the important address is ipv4->GetAddress(1,0).GetLocal().m_address
     Ptr<Ipv4> ipv4 = m_node->GetObject<Ipv4>();
     bool destinedHere = false;
@@ -685,26 +703,60 @@ int RdmaHw::Receive(Ptr<Packet> p, CustomHeader &ch){
 
     if (!destinedHere)
     {
-        printf("%lu : RdmaHw:: Packet not destined for this node, dropping \n", Simulator::Now().GetTimeStep());
+		if ((ch.l3Prot == 0x11) || (ch.l3Prot == 0xFF) || (ch.l3Prot == 0xFD) || (ch.l3Prot == 0xFC)) { //only forward valid RDMA packets: udp,cnp,ack,nack 
+			// interface that the packet was received on
+			uint32_t ingressIfIndex = dev->GetIfIndex();
 
-		// TODO
+			// verify NetDevice perspective on the interface index == perspective of RdmaHW index in m_nic[]
+			NS_ASSERT(m_nic[ingressIfIndex].dev = dev);
+
+			Ptr<Packet> newPacket = p->Copy();
+			return 0; //ForwardPacket(newPacket);
+		}
+		printf("%lu :Dropping non-forwardable packet not for this node. \n", Simulator::Now().GetTimeStep());
 		// Add drop trace source ?
 		// maybe send NACK to inidicate error ?
 
-        return 0;
+		return 1;
+
     }
 
+	//original Receive function for normal RDMA packets meant for this node
+	return Receive(p, ch); 
+}
 
-    if (ch.l3Prot == 0x11){ // UDP
-		ReceiveUdp(p, ch);
-	}else if (ch.l3Prot == 0xFF){ // CNP
-		ReceiveCnp(p, ch);
-	}else if (ch.l3Prot == 0xFD){ // NACK
-		ReceiveAck(p, ch);
-	}else if (ch.l3Prot == 0xFC){ // ACK
-		ReceiveAck(p, ch);
-	}
-	return 0;
+// Assuming 1-D directly connected ring: forward this packet along the ring in the same direction 
+// by sending it out of the other interface, compared to the interface that the packet was not received on 
+// (total 2 non-loopback devices)
+// TODO in the future use local route table with packet->header->dst.ip; ensure the route table is set correctly in common.h
+int RdmaHw::ForwardPacket(Ptr<Packet> packet, QbbNetDevice& inDev){
+	
+	// Identify the other (outgoing) interface in m_nic
+    Ptr<QbbNetDevice> outDev = nullptr;
+
+    for (const auto& nic : m_nic)
+    {
+        if (nic.dev != nullptr && nic.dev != &inDev)
+        {
+            outDev = nic.dev;
+            break;
+        }
+    }
+
+    if (!outDev)
+    {
+		// error: we only landed here when trying to simulate direct-connected ring
+        NS_FATAL_ERROR("RdmaHw::ForwardPacket: No suitable output device found."); 
+        return 1;
+    }
+
+    // Forward the packet using the highest priority RDMA queue (ackQ)
+	// Not using EnqueueHighPrioQ and similar functions to skip triggering traces for intermediate ring nodes
+	// Using highestPrioQ to ensure forwarding - this preempting essentially simulates our congestion factor
+    outDev->m_rdmaEQ->m_ackQ->Enqueue(packet);
+    outDev->TriggerTransmit();
+
+    return 0;
 }
 
 int RdmaHw::ReceiverCheckSeq(uint32_t seq, Ptr<RdmaRxQueuePair> q, uint32_t size){

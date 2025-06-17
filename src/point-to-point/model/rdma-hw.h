@@ -67,6 +67,9 @@ public:
 	int ReceiveAck(Ptr<Packet> p, CustomHeader &ch); // handle both ACK and NACK
 	int Receive(Ptr<Packet> p, CustomHeader &ch); // callback function that the QbbNetDevice should use when receive packets. Only NIC can call this function. And do not call this upon PFC
 
+	int ReceiveWithNetDev(Ptr<Packet> p, CustomHeader& ch, Ptr<QbbNetDevice> dev);
+	int ForwardPacket(Ptr<Packet> packet, QbbNetDevice& inDev); // for static, direct-connected rings and only forwarding at intermediate nodes
+
 	void PCIePause(uint32_t nic_idx, uint32_t qIndex);
 	void PCIeResume(uint32_t nic_idx, uint32_t qIndex);
 	void EnablePause();

@@ -1204,7 +1204,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
 
             s_idx = sdev->GetIfIndex();            
             // the OCS port doesn't do serialization, hence no transmission delay
-            // setting to 0 data rate should through division by zero errors
+            // setting to 0 data rate should throw division by zero errors
             // when we accidently do try to calculate a transmission delay
             s_bw = 0; 
                 
@@ -1230,8 +1230,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             d_idx = ddev->GetIfIndex();
             d_bw = 0;
 
-            bool portNumCorrect = dnodeIsOCS->VerifyDevicePortNum(ddev, ocs_port);
-            //NS_ASSERT(portNumCorrect); 
+            NS_ASSERT(dnodeIsOCS->VerifyDevicePortNum(ddev, ocs_port)); 
         }
         else {
             Ptr<QbbNetDevice> sdev = DynamicCast<QbbNetDevice>(d.Get(0));
