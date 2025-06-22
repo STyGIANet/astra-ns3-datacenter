@@ -236,6 +236,10 @@ void RdmaHw::Setup(QpCompleteCallback cb){
 		// config NIC
 		dev->m_rdmaEQ->m_rdmaGetNxtPkt = MakeCallback(&RdmaHw::GetNxtPacket, this);
 	}
+
+	// simulate OoB for acks with a constant delay
+	m_oobAckDelay =  std::getenv("OOB_ACK_DELAY");
+
 	// setup qp complete callback
 	m_qpCompleteCallback = cb;
 
@@ -331,6 +335,9 @@ void RdmaHw::AddQueuePair(uint32_t src, uint32_t dest, uint64_t tag, uint64_t si
 
 	// Notify Nic
 	m_nic[nic_idx].dev->NewQp(qp);
+
+	//debug
+	NS_LOG_INFO(Simulator::Now().GetTimeStep() << " New QP created with src " << src << ", and dst: " << dest << ", nic_idx: " << nic_idx);
 }
 
 void RdmaHw::DeleteQueuePair(Ptr<RdmaQueuePair> qp){
@@ -484,19 +491,18 @@ int RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader &ch){
 		newp->AddHeader(head);
 		AddHeader(newp, 0x800);	// Attach PPP header
 		// send
-		const char* oobAckDelay =  std::getenv("OOB_ACK_DELAY");
-        if (oobAckDelay != nullptr)
+        if (m_oobAckDelay != nullptr)
         {
-			//printf("debug: oobAckDelay != 0 \n");
 			// secondary ack path: deliver directly to the original sender's QbbNetDevice after fixed delay; simple OoB simulation
             ns3::Ipv4Address srcIp(ch.sip);
             Ptr<ns3::QbbNetDevice> srcDev = FindQbbNetDeviceByIp(srcIp);
 
 			// fixed delay according to envvar to simulate the out‐of‐band link
-			int delay = std::atoi(oobAckDelay);
+			int delay = std::atoi(m_oobAckDelay);
             if (srcDev && delay >= 0)
             {
-                auto time_delay = ns3::NanoSeconds(delay);
+                printf("Node %d : Found static OoB Ack Delay! \n", m_node->GetId());
+				auto time_delay = ns3::NanoSeconds(delay);
                 uint32_t ctx = srcDev->GetNode()->GetId();
                 ns3::Simulator::ScheduleWithContext(ctx,
                                                     time_delay,
@@ -703,21 +709,22 @@ int RdmaHw::ReceiveWithNetDev(Ptr<Packet> p, CustomHeader& ch, Ptr<QbbNetDevice>
 
     if (!destinedHere)
     {
-		if ((ch.l3Prot == 0x11) || (ch.l3Prot == 0xFF) || (ch.l3Prot == 0xFD) || (ch.l3Prot == 0xFC)) { //only forward valid RDMA packets: udp,cnp,ack,nack 
+		// only forward valid RDMA packets: udp,cnp,ack,nack 
+		//if ((ch.l3Prot == 0x11) || (ch.l3Prot == 0xFF) || (ch.l3Prot == 0xFD) || (ch.l3Prot == 0xFC)) { 
+	
+		// for now: forward everything
+
 			// interface that the packet was received on
 			uint32_t ingressIfIndex = dev->GetIfIndex();
 
 			// verify NetDevice perspective on the interface index == perspective of RdmaHW index in m_nic[]
 			NS_ASSERT(m_nic[ingressIfIndex].dev = dev);
 
-			Ptr<Packet> newPacket = p->Copy();
-			return 0; //ForwardPacket(newPacket);
-		}
-		printf("%lu :Dropping non-forwardable packet not for this node. \n", Simulator::Now().GetTimeStep());
-		// Add drop trace source ?
-		// maybe send NACK to inidicate error ?
+			return ForwardPacketOnOtherDev(p, dev);
+		//}
+		//printf("%lu :Dropping non-forwardable packet not for this node. \n", Simulator::Now().GetTimeStep());
 
-		return 1;
+		//return 1;
 
     }
 
@@ -726,34 +733,36 @@ int RdmaHw::ReceiveWithNetDev(Ptr<Packet> p, CustomHeader& ch, Ptr<QbbNetDevice>
 }
 
 // Assuming 1-D directly connected ring: forward this packet along the ring in the same direction 
-// by sending it out of the other interface, compared to the interface that the packet was not received on 
+// by sending it out of the _other_ interface (compared to the interface that the packet was not received on)
 // (total 2 non-loopback devices)
 // TODO in the future use local route table with packet->header->dst.ip; ensure the route table is set correctly in common.h
-int RdmaHw::ForwardPacket(Ptr<Packet> packet, QbbNetDevice& inDev){
+int RdmaHw::ForwardPacketOnOtherDev(Ptr<Packet> packet, Ptr<QbbNetDevice> inDev){
 	
 	// Identify the other (outgoing) interface in m_nic
     Ptr<QbbNetDevice> outDev = nullptr;
 
     for (const auto& nic : m_nic)
     {
-        if (nic.dev != nullptr && nic.dev != &inDev)
+	if (nic.dev != nullptr && PeekPointer(nic.dev) != PeekPointer(inDev))
         {
             outDev = nic.dev;
             break;
         }
     }
 
-    if (!outDev)
+    if (outDev == nullptr)
     {
 		// error: we only landed here when trying to simulate direct-connected ring
-        NS_FATAL_ERROR("RdmaHw::ForwardPacket: No suitable output device found."); 
+        NS_FATAL_ERROR("RdmaHw::ForwardPacketOnOtherDev: No suitable output device found."); 
         return 1;
     }
 
     // Forward the packet using the highest priority RDMA queue (ackQ)
-	// Not using EnqueueHighPrioQ and similar functions to skip triggering traces for intermediate ring nodes
+	// Not using EnqueueHighPrioQ and similar pass-through functions to skip triggering traces for intermediate ring nodes
 	// Using highestPrioQ to ensure forwarding - this preempting essentially simulates our congestion factor
-    outDev->m_rdmaEQ->m_ackQ->Enqueue(packet);
+    // we may need to enqueue/send a _copy_ of the original packet 
+	printf("Node %d : Received packet from dev %p , forwarding to dev %p. \n", m_node->GetId(), PeekPointer(inDev), PeekPointer(outDev));
+	outDev->m_rdmaEQ->m_ackQ->Enqueue(packet);
     outDev->TriggerTransmit();
 
     return 0;

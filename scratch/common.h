@@ -40,6 +40,7 @@
 #include <json/json.hpp>
 #include <time.h>
 #include <map>
+#include <cstdlib>      // for std::getenv
 
 #include "astra-sim/system/scheduling/ReconfigSched.h"
 
@@ -295,7 +296,7 @@ monitor_buffer(FILE* qlen_output, NodeContainer* n)
 }
 
 void
-CalculateRoute(Ptr<Node> host)
+CalculateRoute(Ptr<Node> host, bool node_forwarding)
 {
     // queue for the BFS.
     vector<Ptr<Node>> q;
@@ -338,7 +339,7 @@ CalculateRoute(Ptr<Node> host)
                     txDelay[now] + packet_payload_size * 1000000000lu * 8 / it->second.bw;
                     bw[next] = std::min(bw[now], it->second.bw);
                 }
-                if (next->GetNodeType() == 1 || next->GetNodeType() == 3)
+                if (node_forwarding || next->GetNodeType() == 1 || next->GetNodeType() == 3)
                     q.push_back(next);
             }
             if (d + 1 == dis[next])
@@ -366,11 +367,18 @@ CalculateRoute(Ptr<Node> host)
 void
 CalculateRoutes(NodeContainer& n)
 {
+    
+    // should routes include paths via other intermediate (non-switch) nodes 
+    const char* env = std::getenv("ENABLE_NODE_FORWARDING");
+    bool node_forwarding = (env != nullptr && std::atoi(env) > 0);
+    NS_LOG_INFO("Value of ENABLE_NODE_FORWARDING: " + node_forwarding);
+
+
     for (int i = 0; i < (int)n.GetN(); i++)
     {
         Ptr<Node> node = n.Get(i);
         if (node->GetNodeType() == 0)
-            CalculateRoute(node);
+            CalculateRoute(node, node_forwarding);
     }
 }
 
@@ -897,6 +905,9 @@ void setupOCS(json reconfigJson, NodeContainer n){
     bool demandAware = reconfigJson["demand_aware"];
 
     // Find the node corresponding to switchId
+    if (switchId >= n.GetN()){
+        NS_FATAL_ERROR("Invalid switchId ( " << switchId << " ) in reconfiguration schedule file.");
+    }
     Ptr<Node> node = n.Get(switchId);
     Ptr<OCSNode> ocsNode = DynamicCast<OCSNode>(node);
     if (!ocsNode)
@@ -909,7 +920,7 @@ void setupOCS(json reconfigJson, NodeContainer n){
     // if not demand-aware: schedule given port mappings at fixed times
     if (demandAware)
     {
-        printf("Found Demand-Aware reconfiguration setting \n");
+        NS_LOG_INFO("Found Demand-Aware reconfiguration setting \n");
         // scheduler that dynamically decides if and which reconfiguration would be beneficial between each round of a collective
         AstraSim::reconfigSched& sched = AstraSim::reconfigSched::getScheduler();
         sched.setOCSNode(GetPointer(ocsNode)); // increases ref count on ocsNode, reconfigSched needs to decrement on exit
@@ -991,7 +1002,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         }
         catch (const json::parse_error& e)
         {
-            NS_LOG_ERROR("JSON parsing failed: " + std::string(e.what()));
+            NS_LOG_ERROR("JSON parsing failed at: " + std::string(e.what()));
             NS_FATAL_ERROR("Invalid JSON topology format.");
         }
 
@@ -1011,7 +1022,7 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         for (const auto& sw : topology["switches"])
         {
             uint32_t sid = sw["id"];
-            // OCS switch node_type == 3 for future compatibiltiy (SimAI uses 2 for NVSwitch)
+            // OCS switch node_type == 3 for future compatibility (SimAI uses 2 for NVSwitch)
             node_type[sid] = 3;
             switch_radix[sid] = sw.value("radix", 0);
         }
@@ -1066,11 +1077,11 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         }
         else
         {
-            NS_LOG_ERROR("Unknown node_type in parsing topology file"); // unreachable atm
+            NS_LOG_ERROR("Unknown node_type in parsing topology file");
         }
     }
 
-    // atm OCS requires _json_ topology file with its extra info, such as switch radix
+    // OCS requires json topology file with its extra info, such as switch radix
     if (topology["format"] == "OCS")
     {
         std::ifstream reconfigFile(reconfig_file);
@@ -1121,6 +1132,10 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
 
     QbbHelper qbb;
     Ipv4AddressHelper ipv4;
+    // debug:
+    printf("src|dst|    srcdev [i]:addr   |     dstdev i:addr   \n ---------------------------------- \n");
+    fflush(stdout);
+
     for (uint32_t i = 0; i < link_num; i++)
     {
         uint32_t src, dst;
@@ -1197,10 +1212,10 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         uint64_t channel_delay;
         uint64_t s_bw, d_bw;
 
-
         if (snodeIsOCS) {
             Ptr<OCSNetDevice> sdev = DynamicCast<OCSNetDevice>(d.Get(0));
             Ptr<QbbNetDevice> ddev = DynamicCast<QbbNetDevice>(d.Get(1));
+
 
             s_idx = sdev->GetIfIndex();            
             // the OCS port doesn't do serialization, hence no transmission delay
@@ -1215,7 +1230,10 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             d_idx = ddev->GetIfIndex();
             d_bw = ddev->GetDataRate().GetBitRate();
 
-            // Check that topologyfile port == index in node.m_devices
+            printf(" %d | %d |  [%d]:%p  |  [%d]:%p  \n", snode->GetId(), dnode->GetId(), s_idx, PeekPointer(sdev), d_idx, PeekPointer(ddev));
+            fflush(stdout);
+
+            // Check that topologyfile port == index in node.m_devices (+ 1, accounting for Loopback device)
             // because OCSNode chooses outDev as m_devices[portNumber] in GetDevice()
             NS_ASSERT(snodeIsOCS->VerifyDevicePortNum(sdev, ocs_port)); 
         }
@@ -1230,6 +1248,9 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             d_idx = ddev->GetIfIndex();
             d_bw = 0;
 
+            printf(" %d | %d |  [%d]:%p  |  [%d]:%p  \n", snode->GetId(), dnode->GetId(), s_idx, PeekPointer(sdev), d_idx, PeekPointer(ddev));
+            fflush(stdout);
+
             NS_ASSERT(dnodeIsOCS->VerifyDevicePortNum(ddev, ocs_port)); 
         }
         else {
@@ -1241,9 +1262,12 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             s_bw = sdev->GetDataRate().GetBitRate();
 
             d_idx = ddev->GetIfIndex();
-            d_bw = ddev->GetDataRate().GetBitRate();            
+            d_bw = ddev->GetDataRate().GetBitRate(); 
+            printf(" %d | %d |  [%d]:%p  |  [%d]:%p  \n", snode->GetId(), dnode->GetId(), s_idx, PeekPointer(sdev), d_idx, PeekPointer(ddev));
+            fflush(stdout);           
         }
 
+        
         // source -> destination 
         nbr2if[snode][dnode].idx = s_idx;
         nbr2if[snode][dnode].up = true;
@@ -1274,6 +1298,8 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             MakeBoundCallback(&get_pfc, pfc_file, DynamicCast<QbbNetDevice>(d.Get(1))));
         }
     }
+
+
 
     nic_rate = get_nic_rate(n);
     // config switch
