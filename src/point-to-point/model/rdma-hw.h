@@ -29,6 +29,7 @@ public:
 	RdmaHw();
 
 	Ptr<Node> m_node;
+	const char* m_oobAckDelay; // send acks with a constant delay, directly to src rdma stack. Simulate OoB Ack Network for OCS
 	DataRate m_minRate;		//< Min sending rate
 	uint32_t m_mtu;
 	uint32_t m_cc_mode;
@@ -68,7 +69,7 @@ public:
 	int Receive(Ptr<Packet> p, CustomHeader &ch); // callback function that the QbbNetDevice should use when receive packets. Only NIC can call this function. And do not call this upon PFC
 
 	int ReceiveWithNetDev(Ptr<Packet> p, CustomHeader& ch, Ptr<QbbNetDevice> dev);
-	int ForwardPacket(Ptr<Packet> packet, QbbNetDevice& inDev); // for static, direct-connected rings and only forwarding at intermediate nodes
+	int ForwardPacketOnOtherDev(Ptr<Packet> packet, Ptr<QbbNetDevice> inDev); // for static, direct-connected rings and only forwarding at intermediate nodes
 
 	void PCIePause(uint32_t nic_idx, uint32_t qIndex);
 	void PCIeResume(uint32_t nic_idx, uint32_t qIndex);
