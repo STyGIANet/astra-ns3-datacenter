@@ -501,7 +501,7 @@ int RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader &ch){
 			int delay = std::atoi(m_oobAckDelay);
             if (srcDev && delay >= 0)
             {
-                printf("Node %d : Found static OoB Ack Delay! \n", m_node->GetId());
+                //printf("Node %d : Found static OoB Ack Delay! \n", m_node->GetId());
 				auto time_delay = ns3::NanoSeconds(delay);
                 uint32_t ctx = srcDev->GetNode()->GetId();
                 ns3::Simulator::ScheduleWithContext(ctx,
@@ -720,7 +720,7 @@ int RdmaHw::ReceiveWithNetDev(Ptr<Packet> p, CustomHeader& ch, Ptr<QbbNetDevice>
 			// verify NetDevice perspective on the interface index == perspective of RdmaHW index in m_nic[]
 			NS_ASSERT(m_nic[ingressIfIndex].dev = dev);
 
-			return ForwardPacketOnOtherDev(p, dev);
+			return ForwardPacketOnOtherDev(p, dev, ch);
 		//}
 		//printf("%lu :Dropping non-forwardable packet not for this node. \n", Simulator::Now().GetTimeStep());
 
@@ -736,7 +736,7 @@ int RdmaHw::ReceiveWithNetDev(Ptr<Packet> p, CustomHeader& ch, Ptr<QbbNetDevice>
 // by sending it out of the _other_ interface (compared to the interface that the packet was not received on)
 // (total 2 non-loopback devices)
 // TODO in the future use local route table with packet->header->dst.ip; ensure the route table is set correctly in common.h
-int RdmaHw::ForwardPacketOnOtherDev(Ptr<Packet> packet, Ptr<QbbNetDevice> inDev){
+int RdmaHw::ForwardPacketOnOtherDev(Ptr<Packet> packet, Ptr<QbbNetDevice> inDev, CustomHeader& ch){
 	
 	// Identify the other (outgoing) interface in m_nic
     Ptr<QbbNetDevice> outDev = nullptr;
@@ -761,7 +761,7 @@ int RdmaHw::ForwardPacketOnOtherDev(Ptr<Packet> packet, Ptr<QbbNetDevice> inDev)
 	// Not using EnqueueHighPrioQ and similar pass-through functions to skip triggering traces for intermediate ring nodes
 	// Using highestPrioQ to ensure forwarding - this preempting essentially simulates our congestion factor
     // we may need to enqueue/send a _copy_ of the original packet 
-	printf("Node %d : Received packet from dev %p , forwarding to dev %p. \n", m_node->GetId(), PeekPointer(inDev), PeekPointer(outDev));
+	printf("%d: Flow: %x -> %x, forwarded via Node: %d. inDev %p , outDev %p. \n", Simulator::Now().GetTimeStep(), ch.sip, ch.dip, m_node->GetId(), PeekPointer(inDev), PeekPointer(outDev));
 	outDev->m_rdmaEQ->m_ackQ->Enqueue(packet);
     outDev->TriggerTransmit();
 
