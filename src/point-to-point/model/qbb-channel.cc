@@ -103,6 +103,11 @@ QbbChannel::TransmitStart (
                                   txTime + m_delay, &QbbNetDevice::Receive,
                                   m_link[wire].m_dst, p);
 
+  uint32_t srcNodeId = src->GetNode()->GetId();
+  uint32_t dstNodeId = m_link[wire].m_dst->GetNode()->GetId();
+  NS_LOG_INFO (Simulator::Now().GetTimeStep() << ": QbbChannel (" << srcNodeId << ")[" << src->GetIfIndex() 
+  << "] -> (" << dstNodeId << ")[" << m_link[wire].m_dst->GetIfIndex() << "] transmission, ending at " << (Simulator::Now()+txTime+m_delay).GetTimeStep());
+
   // Call the tx anim callback on the net device
   m_txrxQbb (p, src, m_link[wire].m_dst, txTime, txTime + m_delay);
   return true;

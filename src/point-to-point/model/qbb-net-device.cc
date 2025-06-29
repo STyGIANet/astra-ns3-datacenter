@@ -281,18 +281,25 @@ namespace ns3 {
 	{
 		NS_LOG_FUNCTION(this);
 		if (!m_linkUp) return; // if link is down, return
-		if (m_txMachineState == BUSY) return;	// Quit if channel busy
+		if (m_txMachineState == BUSY){
+			NS_LOG_INFO(Simulator::Now().GetNanoSeconds() << ": (" << m_node->GetId() << ")[" << m_ifIndex << "] BUSY");
+			return;	// Quit if channel busy
+		}
+
 		Ptr<Packet> p;
 		if (m_node->GetNodeType() == 0){
 			int qIndex = m_rdmaEQ->GetNextQindex(m_paused);
 			if (qIndex != -1024){
 				if (qIndex == -1){ // high prio
+					NS_LOG_INFO(Simulator::Now().GetNanoSeconds() << ": (" << m_node->GetId() << ")[" << m_ifIndex << "] Sending from ACK Queue");
 					p = m_rdmaEQ->DequeueQindex(qIndex);
 					m_traceDequeue(p, 0);
 					TransmitStart(p);
 					return;
 				}
 				// a qp dequeue a packet
+				NS_LOG_INFO(Simulator::Now().GetNanoSeconds() << ": (" << m_node->GetId() << ")[" << m_ifIndex << "] Sending from other Queue " << qIndex);
+
 				Ptr<RdmaQueuePair> lastQp = m_rdmaEQ->GetQp(qIndex);
 				p = m_rdmaEQ->DequeueQindex(qIndex);
 				// transmit
@@ -302,7 +309,7 @@ namespace ns3 {
 				// update for the next avail time
 				m_rdmaPktSent(lastQp, p, m_tInterframeGap);
 			}else { // no packet to send
-				NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": PAUSE prohibits send at node " << m_node->GetId() << " (no packet)");
+				NS_LOG_INFO(Simulator::Now().GetNanoSeconds() << ": (" << m_node->GetId() << ")[" << m_ifIndex << "] Pause. No Packets in Queues");
 				Time t = Simulator::GetMaximumSimulationTime();
 				for (uint32_t i = 0; i < m_rdmaEQ->GetFlowCount(); i++){
 					Ptr<RdmaQueuePair> qp = m_rdmaEQ->GetQp(i);
@@ -403,6 +410,7 @@ namespace ns3 {
 				m_node->SwitchReceiveFromDevice(this, packet, ch);
 			}else { // NIC
 				// send to RdmaHw
+				NS_LOG_INFO(Simulator::Now().GetNanoSeconds() << ": (" << m_node->GetId() << ")[" << m_ifIndex << "] Received packet. Sending to RdmaHw");
 				int ret = m_rdmaReceiveCb(packet, ch, this);
 				// TODO we may based on the ret do something
 			}
@@ -509,6 +517,7 @@ namespace ns3 {
 		m_phyTxBeginTrace(m_currentPkt);
 		Time txTime = m_bps.CalculateBytesTxTime(p->GetSize());
 		Time txCompleteTime = txTime + m_tInterframeGap;
+		//printf("%d: sending packet of size %d in txCompleteTime %d from device %p. \n", Simulator::Now().GetTimeStep(), p->GetSize(), txCompleteTime.GetNanoSeconds(), this);
 		NS_LOG_LOGIC("Schedule TransmitCompleteEvent in " << txCompleteTime.GetSeconds() << "sec");
 		Simulator::Schedule(txCompleteTime, &QbbNetDevice::TransmitComplete, this);
 
@@ -531,6 +540,7 @@ namespace ns3 {
 
         if (result == false)
 		{
+			printf("%d: Dropped packet because channel->TransmitStart failed.\n", Simulator::Now().GetTimeStep());
 			m_phyTxDropTrace(p);
 		}
 		return result;
@@ -547,8 +557,10 @@ namespace ns3 {
    }
 
    void QbbNetDevice::NewQp(Ptr<RdmaQueuePair> qp){
-	   qp->m_nextAvail = Simulator::Now();
-	   DequeueAndTransmit();
+
+		NS_ASSERT_MSG(m_rdmaEQ->m_ackQ->GetNPackets() == 0, Simulator::Now().GetTimeStep() << "Assuming synchronise collective rounds. RdmaHw::ClearForwardingQueues(): ackQ is not empty (" << m_rdmaEQ->m_ackQ->GetNPackets() << " pkts) on node (" << m_node->GetId() << ")");
+		qp->m_nextAvail = Simulator::Now();
+		DequeueAndTransmit();
    }
    void QbbNetDevice::ReassignedQp(Ptr<RdmaQueuePair> qp){
 	   DequeueAndTransmit();

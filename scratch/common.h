@@ -369,9 +369,9 @@ CalculateRoutes(NodeContainer& n)
 {
     
     // should routes include paths via other intermediate (non-switch) nodes 
-    const char* env = std::getenv("ENABLE_NODE_FORWARDING");
+    const char* env = std::getenv("ENABLE_RING_FORWARDING");
     bool node_forwarding = (env != nullptr && std::atoi(env) > 0);
-    NS_LOG_INFO("Value of ENABLE_NODE_FORWARDING: " + node_forwarding);
+    NS_LOG_INFO("Value of ENABLE_RING_FORWARDING: " + node_forwarding);
 
 
     for (int i = 0; i < (int)n.GetN(); i++)

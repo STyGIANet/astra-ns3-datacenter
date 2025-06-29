@@ -21,6 +21,7 @@ struct RdmaInterfaceMgr{
 		dev = _dev;
 	}
 };
+enum class RingDirection { Clockwise, Anticlockwise, UndefinedDirection }; // for ring forwarding
 
 class RdmaHw : public Object {
 public:
@@ -42,6 +43,8 @@ public:
 	uint32_t m_total_pause_times; 
 	uint32_t m_paused_times;
 	std::vector<RdmaInterfaceMgr> m_nic; // list of running nic controlled by this RdmaHw
+	bool m_isInDirectRing; // for node-forwarding in directly connected ring (no switches), set via envvar ENABLE_RING_FORWARDING
+  	std::vector<RingDirection> m_nicDirection; // direction in 1d-ring, per-NIC
 	std::unordered_map<uint64_t, Ptr<RdmaQueuePair> > m_qpMap; // mapping from uint64_t to qp
 	std::unordered_map<uint64_t, Ptr<RdmaRxQueuePair> > m_rxQpMap; // mapping from uint64_t to rx qp
 	std::unordered_map<uint32_t, std::vector<int> > m_rtTable; // map from ip address (u32) to possible ECMP port (index of dev)
@@ -56,6 +59,8 @@ public:
 	static Ptr<ns3::QbbNetDevice> FindQbbNetDeviceByIp (const ns3::Ipv4Address& addr); // find the QbbNetDevice on the node whose IPv4 address matches addr
 	Ptr<RdmaQueuePair> GetQp(uint32_t dip, uint16_t sport, uint16_t pg); // get the qp
 	uint32_t GetNicIdxOfQp(Ptr<RdmaQueuePair> qp); // get the NIC index of the qp
+	uint32_t GetNicIdxOfQpWithRingDirection(Ptr<RdmaQueuePair> qp, RingDirection want);
+
 	void AddQueuePair(uint32_t src, uint32_t dest, uint64_t tag, uint64_t size, uint16_t pg, Ipv4Address _sip, Ipv4Address _dip, uint16_t _sport, uint16_t _dport, uint32_t win, uint64_t baseRtt, Callback<void> notifyAppFinish, Callback<void> notifyAppSent); // add a new qp (new send)
 	void DeleteQueuePair(Ptr<RdmaQueuePair> qp);
 

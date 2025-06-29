@@ -217,12 +217,18 @@ TypeId RdmaHw::GetTypeId (void)
 RdmaHw::RdmaHw(){
 	enable_pcie_pause = true;
 	m_paused_times = 0;
+	m_isInDirectRing = false;
 }
 
 void RdmaHw::SetNode(Ptr<Node> node){
 	m_node = node;
 }
 void RdmaHw::Setup(QpCompleteCallback cb){
+	const char* env = std::getenv("ENABLE_RING_FORWARDING");
+	m_isInDirectRing = (env != nullptr && std::atoi(env) > 0);
+	m_nicDirection.resize(m_nic.size(), RingDirection::UndefinedDirection); //init
+
+
 	for (uint32_t i = 0; i < m_nic.size(); i++){
 		Ptr<QbbNetDevice> dev = m_nic[i].dev;
 		if (!dev)
@@ -235,9 +241,32 @@ void RdmaHw::Setup(QpCompleteCallback cb){
 		dev->m_rdmaPktSent = MakeCallback(&RdmaHw::PktSent, this);
 		// config NIC
 		dev->m_rdmaEQ->m_rdmaGetNxtPkt = MakeCallback(&RdmaHw::GetNxtPacket, this);
+
+		if(m_isInDirectRing){
+			// find the peer netdevice on this same channel
+			Ptr<Channel> ch = dev->GetChannel();
+			NS_ASSERT(ch->GetNDevices() == 2);
+			// pick the other dev
+			Ptr<NetDevice> d0 = ch->GetDevice(0);
+			Ptr<NetDevice> d1 = ch->GetDevice(1);
+			Ptr<NetDevice> peer = (d0 == dev ? d1 : d0);
+
+			uint32_t   localId = dev->GetNode()->GetId();
+			uint32_t   peerId  = peer->GetNode()->GetId();
+			// todo, we need to define this neighbour relationship according to portMap of OCS
+			// for now, keep as a reminder that OCS neighbour relationship is not yet implemented
+			NS_ASSERT(dev->GetNode()->GetNodeType() == 0 && peer->GetNode()->GetNodeType() == 0);
+
+			// ring size = how many distinct destinations we have routes for
+			uint32_t   ringSize = NodeList::GetNNodes() - 1;// m_rtTable.size();
+
+			// define "clockwise" as increasing node-id modulo ringSize
+			bool isClockwise = (peerId == (localId + 1) % ringSize);
+			m_nicDirection[i] = isClockwise ? RingDirection::Clockwise : RingDirection::Anticlockwise;
+		}
 	}
 
-	// simulate OoB for acks with a constant delay
+	// simulate OoB for acks with a constant delay, acks will not be sent via nics and links simulated here
 	m_oobAckDelay =  std::getenv("OOB_ACK_DELAY");
 
 	// setup qp complete callback
@@ -255,6 +284,21 @@ uint32_t RdmaHw::GetNicIdxOfQp(Ptr<RdmaQueuePair> qp){
 		NS_ASSERT_MSG(false, "We assume at least one NIC is alive");
 	}
 }
+
+uint32_t RdmaHw::GetNicIdxOfQpWithRingDirection(Ptr<RdmaQueuePair> qp, RingDirection want)
+{
+	auto &ifs = m_rtTable.at(qp->dip.Get());
+	for (uint32_t ifidx : ifs)
+	{
+		// sanity check index from our perspective with dev perspective
+		NS_ASSERT(m_nic[ifidx].dev->GetIfIndex() == ifidx);
+		if (m_nicDirection[ifidx] == want)
+			return ifidx;
+	}
+	NS_FATAL_ERROR("No NIC in desired ring direction");
+	return 0;
+}
+
 uint64_t RdmaHw::GetQpKey(uint32_t dip, uint16_t sport, uint16_t pg){
 	return ((uint64_t)dip << 32) | ((uint64_t)sport << 16) | (uint64_t)pg;
 }
@@ -306,7 +350,22 @@ void RdmaHw::AddQueuePair(uint32_t src, uint32_t dest, uint64_t tag, uint64_t si
 	qp->SetAppNotifyCallback(notifyAppFinish);
 	qp->SetAppSentCallback(notifyAppSent);
 	// add qp
-	uint32_t nic_idx = GetNicIdxOfQp(qp);
+	uint32_t nic_idx;
+	if (m_isInDirectRing && m_rtTable[dip.Get()].size() > 1)
+	{
+		// mirror HalvingDoubling::specify_direction()
+		uint32_t ringSize = NodeList::GetNNodes() - 1; // m_rtTable.size() + 1;
+		uint32_t cwDist   = (dest + ringSize - src) % ringSize;
+		uint32_t ccwDist  = (src + ringSize - dest) % ringSize;
+		uint32_t distance = std::min(cwDist, ccwDist); //should be the same if we have 2 rtTable entries
+		// decide direction
+		RingDirection dir = ((src / distance) % 2 == 0) ? RingDirection::Clockwise : RingDirection::Anticlockwise;
+		nic_idx = GetNicIdxOfQpWithRingDirection(qp, dir);
+	}
+	else
+	{
+		nic_idx = GetNicIdxOfQp(qp);
+	}
 	m_nic[nic_idx].qpGrp->AddQp(qp);
 	uint64_t key = GetQpKey(dip.Get(), sport, pg);
 	m_qpMap[key] = qp;
@@ -337,7 +396,7 @@ void RdmaHw::AddQueuePair(uint32_t src, uint32_t dest, uint64_t tag, uint64_t si
 	m_nic[nic_idx].dev->NewQp(qp);
 
 	//debug
-	NS_LOG_INFO(Simulator::Now().GetTimeStep() << " New QP created with src " << src << ", and dst: " << dest << ", nic_idx: " << nic_idx);
+	NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": New QP created with src " << src << ", and dst: " << dest << ", nic_idx: " << nic_idx << " , which has direction " << static_cast<int>(m_nicDirection[nic_idx]));
 }
 
 void RdmaHw::DeleteQueuePair(Ptr<RdmaQueuePair> qp){
@@ -378,7 +437,8 @@ Ptr<RdmaRxQueuePair> RdmaHw::GetRxQp(uint32_t sip, uint32_t dip, uint16_t sport,
 uint32_t RdmaHw::GetNicIdxOfRxQp(Ptr<RdmaRxQueuePair> q){
 	auto &v = m_rtTable[q->dip];
 	if (v.size() > 0){
-		return v[q->GetHash() % v.size()];
+		return v[0]; //temporary for testing with predicatable paths
+		// return v[q->GetHash() % v.size()];
 	}else{
 		NS_ASSERT_MSG(false, "We assume at least one NIC is alive");
 	}
@@ -415,6 +475,8 @@ void RdmaHw::PCIePause(uint32_t nic_idx, uint32_t qIndex){
 }
 
 int RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader &ch){
+	NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": (" << m_node->GetId() << ") Received UDP for here");
+
 	uint8_t ecnbits = ch.GetIpv4EcnBits();
 
 	uint32_t payload_size = p->GetSize() - ch.GetSerializedSize();
@@ -501,7 +563,10 @@ int RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader &ch){
 			int delay = std::atoi(m_oobAckDelay);
             if (srcDev && delay >= 0)
             {
-                //printf("Node %d : Found static OoB Ack Delay! \n", m_node->GetId());
+				// <Time>: (<NodeId>) OobAck (FlowSrc)->(FlowDst), sending OoB Ack to (FlowSrc)[ifIdx]
+				uint32_t srcNode = (Ipv4Address(ch.sip).Get() >> 8) & 0xFFFF;
+				uint32_t dstNode = (Ipv4Address(ch.dip).Get() >> 8) & 0xFFFF;
+				NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": (" << m_node->GetId() << ") OobAck ("<< srcNode << ")->(" << dstNode << "), sending OoB Ack to (" << srcNode << ")[" << nic_id << "]");
 				auto time_delay = ns3::NanoSeconds(delay);
                 uint32_t ctx = srcDev->GetNode()->GetId();
                 ns3::Simulator::ScheduleWithContext(ctx,
@@ -572,6 +637,7 @@ int RdmaHw::ReceiveCnp(Ptr<Packet> p, CustomHeader &ch){
 }
 
 int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
+	NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": (" << m_node->GetId() << ") Received " << (ch.l3Prot==0xFC?"ACK":"NACK") << " for here");
 	uint16_t qIndex = ch.ack.pg;
 	uint16_t port = ch.ack.dport;
 	uint32_t seq = ch.ack.seq;
@@ -709,8 +775,11 @@ int RdmaHw::ReceiveWithNetDev(Ptr<Packet> p, CustomHeader& ch, Ptr<QbbNetDevice>
 
     if (!destinedHere)
     {
+		// <Time>: (<NodeId>) Received Packet not destined for here
+		NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": (" << m_node->GetId() << ") Received Packet not destined for here");
+		
 		// only forward valid RDMA packets: udp,cnp,ack,nack 
-		//if ((ch.l3Prot == 0x11) || (ch.l3Prot == 0xFF) || (ch.l3Prot == 0xFD) || (ch.l3Prot == 0xFC)) { 
+		if ((ch.l3Prot == 0x11) || (ch.l3Prot == 0xFF) || (ch.l3Prot == 0xFD) || (ch.l3Prot == 0xFC)) { 
 	
 		// for now: forward everything
 
@@ -718,13 +787,14 @@ int RdmaHw::ReceiveWithNetDev(Ptr<Packet> p, CustomHeader& ch, Ptr<QbbNetDevice>
 			uint32_t ingressIfIndex = dev->GetIfIndex();
 
 			// verify NetDevice perspective on the interface index == perspective of RdmaHW index in m_nic[]
-			NS_ASSERT(m_nic[ingressIfIndex].dev = dev);
+			Ptr<QbbNetDevice> expectedDev = m_nic[ingressIfIndex].dev;
+			NS_ASSERT_MSG(expectedDev == dev, "NIC table mismatch: expected " << expectedDev << " got " << dev);
 
 			return ForwardPacketOnOtherDev(p, dev, ch);
-		//}
-		//printf("%lu :Dropping non-forwardable packet not for this node. \n", Simulator::Now().GetTimeStep());
+		}
+		NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": (" << m_node->GetId() << ") Dropping non-udp packet not meant for this node. l3Prot == " << ch.l3Prot );
 
-		//return 1;
+		return 1;
 
     }
 
@@ -761,8 +831,17 @@ int RdmaHw::ForwardPacketOnOtherDev(Ptr<Packet> packet, Ptr<QbbNetDevice> inDev,
 	// Not using EnqueueHighPrioQ and similar pass-through functions to skip triggering traces for intermediate ring nodes
 	// Using highestPrioQ to ensure forwarding - this preempting essentially simulates our congestion factor
     // we may need to enqueue/send a _copy_ of the original packet 
-	printf("%d: Flow: %x -> %x, forwarded via Node: %d. inDev %p , outDev %p. \n", Simulator::Now().GetTimeStep(), ch.sip, ch.dip, m_node->GetId(), PeekPointer(inDev), PeekPointer(outDev));
-	outDev->m_rdmaEQ->m_ackQ->Enqueue(packet);
+	
+	// LOG <Time>: (<NodeId>) Forwarding (FlowSrc)->(FlowDst), forwarded via [inDevIdx]-(<NodeId>)->[outDevIdx]. Enqueued to ackQ.
+    uint32_t inIdx  = inDev ->GetIfIndex ();
+    uint32_t outIdx = outDev->GetIfIndex ();
+	uint32_t srcNode = (Ipv4Address(ch.sip).Get() >> 8) & 0xFFFF;
+	uint32_t dstNode = (Ipv4Address(ch.dip).Get() >> 8) & 0xFFFF;
+    NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": (" << m_node->GetId() 
+				<< ") Forwarding (" << srcNode << ")->(" << dstNode
+				<< "), forwarded via [" << inIdx  << "]-(" << m_node->GetId() << ") ->[" << outIdx << "]. Enqueued to ackQ.");	
+	// SEND
+	outDev->m_rdmaEQ->m_ackQ->Enqueue(packet->Copy());
     outDev->TriggerTransmit();
 
     return 0;
