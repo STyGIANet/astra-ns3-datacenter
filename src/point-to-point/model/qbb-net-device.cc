@@ -84,14 +84,23 @@ namespace ns3 {
 			m_traceRdmaDequeue(p, 0);
 			return p;
 		}
-		if (qIndex >= 0){ // qp
-			Ptr<Packet> p = m_rdmaGetNxtPkt(m_qpGrp->Get(qIndex));
-			m_rrlast = qIndex;
-			m_qlast = qIndex;
-			m_traceRdmaDequeue(p, m_qpGrp->Get(qIndex)->m_pg);
-			return p;
-		}
-		return 0;
+		// a queue assosciated with flows for which we are neither src nor dst, just intermediate forwarding node
+        int nFwd = m_forwardQueues.size();
+        if (qIndex >= 0 && qIndex < (nFwd))
+        {
+            Ptr<Packet> p = m_forwardQueues[qIndex]->Dequeue();
+            m_qlast = qIndex;
+            m_traceRdmaDequeue(p, 0);
+            return p;
+        }
+
+		// a real qp, from a flow that originates here
+        uint32_t qpIdx = qIndex - nFwd;
+        Ptr<Packet> p = m_rdmaGetNxtPkt(m_qpGrp->Get(qpIdx));
+        m_rrlast = qIndex;
+        m_qlast = qpIdx;
+        m_traceRdmaDequeue(p, m_qpGrp->Get(qpIdx)->m_pg);
+        return p;
 	}
 	int RdmaEgressQueue::GetNextQindex(bool paused[]){
 		bool found = false;
@@ -103,32 +112,69 @@ namespace ns3 {
 			return -1;
 
 		// no pkt in highest priority queue, do rr for each qp
-		int res = -1024;
-		uint32_t fcount = m_qpGrp->GetN();
-		uint32_t min_finish_id = 0xffffffff;
-		for (qIndex = 1; qIndex <= fcount; qIndex++){
-			uint32_t idx = (qIndex + m_rrlast) % fcount;
-			if (stprio){// Always serve the oldest qp first
-				idx = (qIndex - 1) % fcount;
+		// round-robin across (all forward-queues) + (all QPs)
+		uint32_t nFwd = m_forwardQueues.size();
+  		uint32_t nQp  = m_qpGrp->GetN();
+  		uint32_t total = nFwd + nQp;
+		if (total == 0) return -1024;
+
+        for (uint32_t i = 1; i <= total; ++i)
+        {
+            uint32_t slot = (m_rrlast + i) % total;
+			if (stprio){// Always serve the forwarded and then oldest qps first (they have earlier index)
+				slot = (i - 1) % total;
 			}
-			Ptr<RdmaQueuePair> qp = m_qpGrp->Get(idx);
-			qp->maxQps = maxQps;
-			if(qp->GetBytesLeft()<=0){
-				int sender_node = qp->GetSrc();
-				int receiver_node = qp->GetDest();
-				int tag = qp->GetTag();
-				int t_count = qp->GetInitialSize();
-			}
-			if ( ( (!paused[qp->m_pg] && qp->GetBytesLeft() > 0) || (!qp->retransmitQueue.empty()) ) && !qp->IsWinBound()){
-				if (m_qpGrp->Get(idx)->m_nextAvail.GetTimeStep() > Simulator::Now().GetTimeStep()) //not available now
-					continue;
-				res = idx;
-				break;
-			}
-			// else if (qp->IsFinished()){
-			// 	min_finish_id = idx < min_finish_id ? idx : min_finish_id;
-			// }
-		}
+            if (slot < nFwd)
+            {
+                // forwarding queue slot
+                if (m_forwardQueues[slot]->GetNPackets() > 0)
+                {
+                    m_rrlast = slot;
+                    return slot;
+                }
+            }
+
+            else
+            {
+                // a real RDMA QP, a flow that originated from this node
+                uint32_t qpIdx = slot - nFwd;
+                Ptr<RdmaQueuePair> qp = m_qpGrp->Get(qpIdx);
+                bool hasData = qp->GetBytesLeft() > 0 || !qp->retransmitQueue.empty();
+                if (!paused[qp->m_pg] && hasData && qp->m_nextAvail <= Simulator::Now() && !qp->IsWinBound())
+                {
+                    m_rrlast = slot;
+                    return slot;
+                }
+            }
+        }
+		return -1024;
+	}
+
+        // uint32_t fcount = m_qpGrp->GetN();
+		// uint32_t min_finish_id = 0xffffffff;
+		// for (qIndex = 1; qIndex <= fcount; qIndex++){
+		// 	uint32_t idx = (qIndex + m_rrlast) % fcount;
+		// 	if (stprio){// Always serve the oldest qp first
+		// 		idx = (qIndex - 1) % fcount;
+		// 	}
+		// 	Ptr<RdmaQueuePair> qp = m_qpGrp->Get(idx);
+		// 	qp->maxQps = maxQps;
+		// 	if(qp->GetBytesLeft()<=0){
+		// 		int sender_node = qp->GetSrc();
+		// 		int receiver_node = qp->GetDest();
+		// 		int tag = qp->GetTag();
+		// 		int t_count = qp->GetInitialSize();
+		// 	}
+		// 	if ( ( (!paused[qp->m_pg] && qp->GetBytesLeft() > 0) || (!qp->retransmitQueue.empty()) ) && !qp->IsWinBound()){
+		// 		if (m_qpGrp->Get(idx)->m_nextAvail.GetTimeStep() > Simulator::Now().GetTimeStep()) //not available now
+		// 			continue;
+		// 		res = idx;
+		// 		break;
+		// 	}
+		// 	// else if (qp->IsFinished()){
+		// 	// 	min_finish_id = idx < min_finish_id ? idx : min_finish_id;
+		// 	// }
+		// }
 
 		// // clear the finished qp
 		// if (min_finish_id < 0xffffffff){
@@ -142,8 +188,8 @@ namespace ns3 {
 		// 	}
 		// 	qps.resize(nxt);
 		// }
-		return res;
-	}
+	//	return res;
+	//}
 
 	int RdmaEgressQueue::GetLastQueue(){
 		return m_qlast;
@@ -289,6 +335,7 @@ namespace ns3 {
 		Ptr<Packet> p;
 		if (m_node->GetNodeType() == 0){
 			int qIndex = m_rdmaEQ->GetNextQindex(m_paused);
+			int nFwd = m_rdmaEQ->m_forwardQueues.size();
 			if (qIndex != -1024){
 				if (qIndex == -1){ // high prio
 					NS_LOG_INFO(Simulator::Now().GetNanoSeconds() << ": (" << m_node->GetId() << ")[" << m_ifIndex << "] Sending from ACK Queue");
@@ -297,17 +344,40 @@ namespace ns3 {
 					TransmitStart(p);
 					return;
 				}
-				// a qp dequeue a packet
-				NS_LOG_INFO(Simulator::Now().GetNanoSeconds() << ": (" << m_node->GetId() << ")[" << m_ifIndex << "] Sending from other Queue " << qIndex);
+				else if (qIndex >= 0 && qIndex < nFwd)   // forwarding FIFOs
+				{
+                    NS_LOG_INFO(Simulator::Now().GetNanoSeconds() << ": (" << m_node->GetId() << ")[" << m_ifIndex << "] Sending forwarded packet from fwdQ " << qIndex);
+                    Ptr<Packet> p = m_rdmaEQ->DequeueQindex(qIndex);
+                    TransmitStart(p);
+                    return;
+                }
+                else
+                {
+                    // real QP slot
+                    uint32_t qpSlot = qIndex - nFwd;
+                    NS_LOG_INFO(Simulator::Now().GetNanoSeconds() << ": (" << m_node->GetId() << ")[" << m_ifIndex
+                                  << "] Sending from QP-slot " << qIndex);
+                    Ptr<RdmaQueuePair> lastQp = m_rdmaEQ->GetQp(qpSlot);
+                    Ptr<Packet> p = m_rdmaEQ->DequeueQindex(qIndex);
+                    // transmit
+                    m_traceQpDequeue(p, lastQp);
+                    TransmitStart(p);
+                    // update for the next avail time
+                    m_rdmaPktSent(lastQp, p, m_tInterframeGap);
+                    return;
+                }
 
-				Ptr<RdmaQueuePair> lastQp = m_rdmaEQ->GetQp(qIndex);
-				p = m_rdmaEQ->DequeueQindex(qIndex);
-				// transmit
-				m_traceQpDequeue(p, lastQp);
-				TransmitStart(p);
+                // // a qp dequeue a packet
+				// NS_LOG_INFO(Simulator::Now().GetNanoSeconds() << ": (" << m_node->GetId() << ")[" << m_ifIndex << "] Sending from other Queue " << qIndex);
 
-				// update for the next avail time
-				m_rdmaPktSent(lastQp, p, m_tInterframeGap);
+				// Ptr<RdmaQueuePair> lastQp = m_rdmaEQ->GetQp(qIndex);
+				// p = m_rdmaEQ->DequeueQindex(qIndex);
+				// // transmit
+				// m_traceQpDequeue(p, lastQp);
+				// TransmitStart(p);
+
+				// // update for the next avail time
+				// m_rdmaPktSent(lastQp, p, m_tInterframeGap);
 			}else { // no packet to send
 				NS_LOG_INFO(Simulator::Now().GetNanoSeconds() << ": (" << m_node->GetId() << ")[" << m_ifIndex << "] Pause. No Packets in Queues");
 				Time t = Simulator::GetMaximumSimulationTime();
@@ -362,11 +432,12 @@ namespace ns3 {
 	void
 		QbbNetDevice::Resume(unsigned qIndex)
 	{
-		NS_LOG_FUNCTION(this << qIndex);
-		NS_ASSERT_MSG(m_paused[qIndex], "Must be PAUSEd");
+		unsigned realqIndex = qIndex - m_rdmaEQ->m_forwardQueues.size();
+		NS_LOG_FUNCTION(this << realqIndex);
+		NS_ASSERT_MSG(m_paused[realqIndex], "Must be PAUSEd");
 		m_tracePfc(0);
-		m_paused[qIndex] = false;
-		NS_LOG_INFO("Node " << m_node->GetId() << " dev " << m_ifIndex << " queue " << qIndex <<
+		m_paused[realqIndex] = false;
+		NS_LOG_INFO("Node " << m_node->GetId() << " dev " << m_ifIndex << " queue " << realqIndex <<
 			" resumed at " << Simulator::Now().GetSeconds());
 		DequeueAndTransmit();
 	}
@@ -557,7 +628,6 @@ namespace ns3 {
    }
 
    void QbbNetDevice::NewQp(Ptr<RdmaQueuePair> qp){
-
 		NS_ASSERT_MSG(m_rdmaEQ->m_ackQ->GetNPackets() == 0, Simulator::Now().GetTimeStep() << "Assuming synchronise collective rounds. RdmaHw::ClearForwardingQueues(): ackQ is not empty (" << m_rdmaEQ->m_ackQ->GetNPackets() << " pkts) on node (" << m_node->GetId() << ")");
 		qp->m_nextAvail = Simulator::Now();
 		DequeueAndTransmit();
@@ -615,5 +685,32 @@ namespace ns3 {
 			Time delta = t < Simulator::Now() ? Time(0) : t - Simulator::Now();
 			m_nextSend = Simulator::Schedule(delta, &QbbNetDevice::DequeueAndTransmit, this);
 		}
-	}
+    }
+
+    uint32_t
+    RdmaEgressQueue::GetOrCreateForwardQueue(uint32_t sip, uint32_t dip)
+    {
+        auto key = std::make_pair(sip, dip);
+        auto it = m_fwdMap.find(key);
+        if (it != m_fwdMap.end())
+        {
+            return it->second;
+        }
+        // create a new DropTail FIFO for this flow
+        Ptr<DropTailQueuePacket> q = CreateObject<DropTailQueuePacket>();
+        q->SetAttribute("MaxBytes", UintegerValue(0xffffffff));
+        m_forwardQueues.push_back(q);
+        uint32_t idx = m_forwardQueues.size() - 1;
+        m_fwdMap[key] = idx;
+        return idx;
+    }
+
+    void
+    RdmaEgressQueue::EnqueueForwarding(uint32_t fwdIndex, Ptr<Packet> p)
+    {
+        NS_ASSERT(fwdIndex < m_forwardQueues.size());
+        m_traceRdmaEnqueue(p, 0); // reuse the same trace source
+        m_forwardQueues[fwdIndex]->Enqueue(p);
+    }
+
 } // namespace ns3

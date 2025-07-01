@@ -11,6 +11,7 @@
 #include "rdma-hw.h"
 #include "ppp-header.h"
 #include "qbb-header.h"
+#include "qbb-channel.h"
 #include "cn-header.h"
 #include <cstdlib>      // for std::getenv
 #include "ns3/node-list.h"
@@ -245,11 +246,14 @@ void RdmaHw::Setup(QpCompleteCallback cb){
 		if(m_isInDirectRing){
 			// find the peer netdevice on this same channel
 			Ptr<Channel> ch = dev->GetChannel();
-			NS_ASSERT(ch->GetNDevices() == 2);
+			Ptr<QbbChannel> QbbCh = DynamicCast<QbbChannel>(ch);
+			NS_ASSERT(QbbCh && QbbCh->GetNDevices() == 2);
 			// pick the other dev
-			Ptr<NetDevice> d0 = ch->GetDevice(0);
-			Ptr<NetDevice> d1 = ch->GetDevice(1);
-			Ptr<NetDevice> peer = (d0 == dev ? d1 : d0);
+			Ptr<NetDevice> nd0 = QbbCh->GetDevice(0);
+			Ptr<NetDevice> nd1 = QbbCh->GetDevice(1);
+			Ptr<QbbNetDevice> d0 = DynamicCast<QbbNetDevice>(nd0);
+			Ptr<QbbNetDevice> d1 = DynamicCast<QbbNetDevice>(nd1);
+			Ptr<QbbNetDevice> peer = (d0 == dev ? d1 : d0);
 
 			uint32_t   localId = dev->GetNode()->GetId();
 			uint32_t   peerId  = peer->GetNode()->GetId();
@@ -841,9 +845,14 @@ int RdmaHw::ForwardPacketOnOtherDev(Ptr<Packet> packet, Ptr<QbbNetDevice> inDev,
 				<< ") Forwarding (" << srcNode << ")->(" << dstNode
 				<< "), forwarded via [" << inIdx  << "]-(" << m_node->GetId() << ") ->[" << outIdx << "]. Enqueued to ackQ.");	
 	// SEND
-	outDev->m_rdmaEQ->m_ackQ->Enqueue(packet->Copy());
-    outDev->TriggerTransmit();
+	//outDev->m_rdmaEQ->m_ackQ->Enqueue(packet->Copy());
 
+	uint32_t sip   = ch.sip;
+	uint32_t dip   = ch.dip;
+	auto    rdmaQ = outDev->GetRdmaQueue();
+	uint32_t fwdIdx = rdmaQ->GetOrCreateForwardQueue(sip,dip);
+	rdmaQ->EnqueueForwarding(fwdIdx, packet->Copy());
+	outDev->TriggerTransmit();
     return 0;
 }
 

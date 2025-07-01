@@ -44,6 +44,12 @@ public:
 	int m_qlast;
 	uint32_t m_rrlast;
 	Ptr<DropTailQueuePacket> m_ackQ; // highest priority queue
+  // forwarding in direct connect topologies
+  std::vector< Ptr<DropTailQueuePacket> > m_forwardQueues;  // one FIFO per forwarded (sip->dip) flow
+  std::map<std::pair<uint32_t,uint32_t>, uint32_t>  m_fwdMap; // (sip,dip) -> fwd-queue index
+
+
+
 	//Ptr<RedQueue> m_ackQ;
 	Ptr<RdmaQueuePairGroup> m_qpGrp; // queue pairs
 
@@ -62,6 +68,10 @@ public:
 	void RecoverQueue(uint32_t i);
 	void EnqueueHighPrioQ(Ptr<Packet> p);
 	void CleanHighPrio(TracedCallback<Ptr<const Packet>, uint32_t> dropCb);
+
+  // forwarding in direct connect topologies, we create ephemeral simple fifo queues for each flow that we're forwarding
+  uint32_t GetOrCreateForwardQueue(uint32_t sip, uint32_t dip); // lookup-or-create the fwd-queue for this (sip,dip)
+  void EnqueueForwarding(uint32_t fwdIndex, Ptr<Packet> p); // push into that queue
 
   uint32_t maxQps = 0;
 
@@ -140,6 +150,7 @@ public:
 	TracedCallback<Ptr<const Packet>, uint32_t> m_traceDequeue;
 	TracedCallback<Ptr<const Packet>, uint32_t> m_traceDrop;
 	TracedCallback<uint32_t> m_tracePfc; // 0: resume, 1: pause
+
 protected:
 
 	//Ptr<Node> m_node;
