@@ -415,6 +415,7 @@ void RdmaHw::PCIePause(uint32_t nic_idx, uint32_t qIndex){
 }
 
 int RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader &ch){
+	NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": (" << m_node->GetId() << ") Received UDP for here");
 	uint8_t ecnbits = ch.GetIpv4EcnBits();
 
 	uint32_t payload_size = p->GetSize() - ch.GetSerializedSize();
@@ -501,7 +502,11 @@ int RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader &ch){
 			int delay = std::atoi(m_oobAckDelay);
             if (srcDev && delay >= 0)
             {
-                printf("Node %d : Found static OoB Ack Delay! \n", m_node->GetId());
+                // <Time>: (<NodeId>) OobAck (FlowSrc)->(FlowDst), sending OoB Ack to (FlowSrc)[ifIdx]
+				uint32_t srcNode = (Ipv4Address(ch.sip).Get() >> 8) & 0xFFFF;
+				uint32_t dstNode = (Ipv4Address(ch.dip).Get() >> 8) & 0xFFFF;
+				NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": (" << m_node->GetId() << ") OobAck ("<< srcNode << ")->(" << dstNode << "), sending OoB Ack to (" << srcNode << ")[" << nic_id << "]");
+
 				auto time_delay = ns3::NanoSeconds(delay);
                 uint32_t ctx = srcDev->GetNode()->GetId();
                 ns3::Simulator::ScheduleWithContext(ctx,
@@ -572,6 +577,7 @@ int RdmaHw::ReceiveCnp(Ptr<Packet> p, CustomHeader &ch){
 }
 
 int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
+	NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": (" << m_node->GetId() << ") Received " << (ch.l3Prot==0xFC?"ACK":"NACK") << " for here");
 	uint16_t qIndex = ch.ack.pg;
 	uint16_t port = ch.ack.dport;
 	uint32_t seq = ch.ack.seq;
@@ -709,6 +715,7 @@ int RdmaHw::ReceiveWithNetDev(Ptr<Packet> p, CustomHeader& ch, Ptr<QbbNetDevice>
 
     if (!destinedHere)
     {
+		NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": (" << m_node->GetId() << ") Received Packet not destined for here");
 		// only forward valid RDMA packets: udp,cnp,ack,nack 
 		// if ((ch.l3Prot == 0x11) || (ch.l3Prot == 0xFF) || (ch.l3Prot == 0xFD) || (ch.l3Prot == 0xFC)) { 
 	
@@ -720,7 +727,8 @@ int RdmaHw::ReceiveWithNetDev(Ptr<Packet> p, CustomHeader& ch, Ptr<QbbNetDevice>
 			// verify NetDevice perspective on the interface index == perspective of RdmaHW index in m_nic[]
 			NS_ASSERT(m_nic[ingressIfIndex].dev = dev);
 
-			return ForwardPacketOnOtherDev(p, dev);
+			
+			return ForwardPacketOnOtherDev(p, dev, ch);
 		//}
 		//printf("%lu :Dropping non-forwardable packet not for this node. \n", Simulator::Now().GetTimeStep());
 
@@ -736,7 +744,7 @@ int RdmaHw::ReceiveWithNetDev(Ptr<Packet> p, CustomHeader& ch, Ptr<QbbNetDevice>
 // by sending it out of the _other_ interface (compared to the interface that the packet was not received on)
 // (total 2 non-loopback devices)
 // TODO in the future use local route table with packet->header->dst.ip; ensure the route table is set correctly in common.h
-int RdmaHw::ForwardPacketOnOtherDev(Ptr<Packet> packet, Ptr<QbbNetDevice> inDev){
+int RdmaHw::ForwardPacketOnOtherDev(Ptr<Packet> packet, Ptr<QbbNetDevice> inDev, CustomHeader& ch){
 	
 	// Identify the other (outgoing) interface in m_nic
     Ptr<QbbNetDevice> outDev = nullptr;
@@ -761,7 +769,14 @@ int RdmaHw::ForwardPacketOnOtherDev(Ptr<Packet> packet, Ptr<QbbNetDevice> inDev)
 	// Not using EnqueueHighPrioQ and similar pass-through functions to skip triggering traces for intermediate ring nodes
 	// Using highestPrioQ to ensure forwarding - this preempting essentially simulates our congestion factor
     // we may need to enqueue/send a _copy_ of the original packet 
-	printf("Node %d : Received packet from dev %p , forwarding to dev %p. \n", m_node->GetId(), PeekPointer(inDev), PeekPointer(outDev));
+	uint32_t inIdx  = inDev ->GetIfIndex ();
+    uint32_t outIdx = outDev->GetIfIndex ();
+	uint32_t srcNode = (Ipv4Address(ch.sip).Get() >> 8) & 0xFFFF;
+	uint32_t dstNode = (Ipv4Address(ch.dip).Get() >> 8) & 0xFFFF;
+    NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": (" << m_node->GetId() 
+				<< ") Forwarding (" << srcNode << ")->(" << dstNode
+				<< "), forwarded via [" << inIdx  << "]-(" << m_node->GetId() << ") ->[" << outIdx << "]. Enqueued to ackQ.");	
+	
 	outDev->m_rdmaEQ->m_ackQ->Enqueue(packet);
     outDev->TriggerTransmit();
 
