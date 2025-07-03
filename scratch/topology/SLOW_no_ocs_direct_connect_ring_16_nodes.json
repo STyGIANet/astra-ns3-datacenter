@@ -1,0 +1,31 @@
+{
+  "format": "OCS",
+  "version": "0.1",
+  "node_num": 17,
+  "t1l": 0,
+  "t2l": 0,
+  "podTors": 1,
+  "allTors": 1,
+  "switches": [
+    { "id": 16, "type": "OCS", "radix": 8 }
+  ],
+  "links": [
+    { "from": 0, "to": 1, "switchport": 0, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 },
+    { "from": 1, "to": 2, "switchport": 1, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 },
+    { "from": 2, "to": 3, "switchport": 2, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 },
+    { "from": 3, "to": 4, "switchport": 3, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 },
+    { "from": 4, "to": 5, "switchport": 4, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 },
+    { "from": 5, "to": 6, "switchport": 5, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 },
+    { "from": 6, "to": 7, "switchport": 6, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 },
+    { "from": 7, "to": 8, "switchport": 8, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 },
+    { "from": 8, "to": 9, "switchport": 9, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 },
+    { "from": 9, "to": 10, "switchport": 10, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 },
+    { "from": 10, "to": 11, "switchport": 11, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 },
+    { "from": 11, "to": 12, "switchport": 12, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 },
+    { "from": 12, "to": 13, "switchport": 13, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 },
+    { "from": 13, "to": 14, "switchport": 14, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 },
+    { "from": 14, "to": 15, "switchport": 15, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 },
+    { "from": 15, "to": 0, "switchport": 16, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 }
+  ]
+}
+
