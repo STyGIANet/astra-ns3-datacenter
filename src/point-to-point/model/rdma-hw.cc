@@ -415,7 +415,6 @@ void RdmaHw::PCIePause(uint32_t nic_idx, uint32_t qIndex){
 }
 
 int RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader &ch){
-	NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": (" << m_node->GetId() << ") Received UDP for here");
 	uint8_t ecnbits = ch.GetIpv4EcnBits();
 
 	uint32_t payload_size = p->GetSize() - ch.GetSerializedSize();
@@ -681,12 +680,16 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 int RdmaHw::Receive(Ptr<Packet> p, CustomHeader &ch){
 
     if (ch.l3Prot == 0x11){ // UDP
+		NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": (" << m_node->GetId() << ") Received UDP for here");
 		ReceiveUdp(p, ch);
 	}else if (ch.l3Prot == 0xFF){ // CNP
+		NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": (" << m_node->GetId() << ") Received CNP for here");
 		ReceiveCnp(p, ch);
 	}else if (ch.l3Prot == 0xFD){ // NACK
+		NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": (" << m_node->GetId() << ") Received NACK for here");
 		ReceiveAck(p, ch);
 	}else if (ch.l3Prot == 0xFC){ // ACK
+		NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": (" << m_node->GetId() << ") Received ACK for here");
 		ReceiveAck(p, ch);
 	}
 	return 0;
@@ -715,8 +718,37 @@ int RdmaHw::ReceiveWithNetDev(Ptr<Packet> p, CustomHeader& ch, Ptr<QbbNetDevice>
 
     if (!destinedHere)
     {
-		NS_LOG_INFO(Simulator::Now().GetTimeStep() << ": (" << m_node->GetId() << ") Received Packet not destined for here");
-		// only forward valid RDMA packets: udp,cnp,ack,nack 
+		// logging
+        if (ch.l3Prot == 0x11)
+        { // UDP
+            NS_LOG_INFO(Simulator::Now().GetTimeStep()
+                        << ": (" << m_node->GetId()
+                        << ") Received a UDP Packet not destined for here");
+        }
+        else if (ch.l3Prot == 0xFF)
+        { // CNP
+            NS_LOG_INFO(Simulator::Now().GetTimeStep()
+                        << ": (" << m_node->GetId()
+                        << ") Received CNP Packet not destined for here");
+        }
+        else if (ch.l3Prot == 0xFD)
+        { // NACK
+            NS_LOG_INFO(Simulator::Now().GetTimeStep()
+                        << ": (" << m_node->GetId()
+                        << ") Received NACK Packet not destined for here");
+
+            ReceiveAck(p, ch);
+        }
+        else if (ch.l3Prot == 0xFC)
+        { // ACK
+            NS_LOG_INFO(Simulator::Now().GetTimeStep()
+                        << ": (" << m_node->GetId()
+                        << ") Received ACK Packet not destined for here");
+
+            ReceiveAck(p, ch);
+        }
+
+        // only forward valid RDMA packets: udp,cnp,ack,nack 
 		// if ((ch.l3Prot == 0x11) || (ch.l3Prot == 0xFF) || (ch.l3Prot == 0xFD) || (ch.l3Prot == 0xFC)) { 
 	
 		// for now: forward everything
