@@ -1,0 +1,19 @@
+{
+  "format": "OCS",
+  "version": "0.1",
+  "node_num": 5,
+  "t1l": 0,
+  "t2l": 0,
+  "podTors": 1,
+  "allTors": 1,
+  "switches": [
+    { "id": 4, "type": "OCS", "radix": 8 }
+  ],
+  "links": [
+    { "from": 0, "to": 1, "switchport": 1, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 },
+    { "from": 1, "to": 2, "switchport": 2, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 },
+    { "from": 2, "to": 3, "switchport": 3, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 },
+    { "from": 3, "to": 0, "switchport": 3, "bandwidth": "1Gbps", "latency": "0.0005ms", "error_rate": 0 }
+  ]
+}
+
