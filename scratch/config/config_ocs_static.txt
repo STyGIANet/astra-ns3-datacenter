@@ -3,9 +3,9 @@ USE_DYNAMIC_PFC_THRESHOLD 1
 
 PACKET_PAYLOAD_SIZE 1000
 
-TOPOLOGY_FILE ../../scratch/topology/no_ocs_direct_connect_ring_8_nodes.json
+TOPOLOGY_FILE ../../scratch/topology/no_ocs_direct_connect_ring_16_nodes.json
 TOPOLOGY_FILE_FORMAT json
-RECONFIG_FILE ../../scratch/topology/ocs_static_ring_8_nodes.json
+RECONFIG_FILE ../../scratch/topology/ocs_static_ring_16_nodes.json
 FLOW_FILE ../../scratch/output/flow.txt
 TRACE_FILE ../../scratch/output/trace.txt
 TRACE_OUTPUT_FILE ../../scratch/output/mix.tr
