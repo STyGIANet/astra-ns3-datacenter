@@ -385,6 +385,9 @@ CalculateRoutes(NodeContainer& n)
 void
 SetRoutingEntries(bool afterFailure)
 {
+    const char* env = std::getenv("ENABLE_NODE_FORWARDING");
+    bool node_forwarding = (env != nullptr && std::atoi(env) > 0);
+
     for (auto i = nextHop.begin(); i != nextHop.end(); i++)
     {
         Ptr<Node> node = i->first;
@@ -394,6 +397,7 @@ SetRoutingEntries(bool afterFailure)
             Ptr<Node> dst = j->first;
             Ipv4Address dstAddr = dst->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal();
             vector<Ptr<Node>> nexts = j->second;
+            NS_LOG_INFO("node: "<< node->GetId() << ", dstAddr: " << dst->GetId() << ", nexts size: " << nexts.size());
             for (int k = 0; k < (int)nexts.size(); k++)
             {
                 Ptr<Node> next = nexts[k];
@@ -408,6 +412,24 @@ SetRoutingEntries(bool afterFailure)
                 }
                 else if (node->GetNodeType() == 0)
                 {
+                    if (node_forwarding && nexts.size() > 1){ // equal cost paths on the ring (halfway)
+                        NS_LOG_INFO("SetRoutingEntries for ring and equal costs");
+                        // calculate direction based on node id and ring size
+                        int ringSize = table.size() + 1; // table doesn't include itself
+                        int id = node->GetId();
+                        int pair = id % (ringSize / 2); // nodes exactly n/2 apart are part of the same pair
+                        NS_ASSERT(id == pair || dst->GetId() == pair); // assuming linear, 0-indexed IDs
+                        bool flowClockwise = pair % 2 == 0;// half of the pairs clockwise
+
+                        // only add the next hop going in that direction
+                        bool nicClockwise = next->GetId() == id + 1 % ringSize;
+
+                        if (flowClockwise && nicClockwise || !flowClockwise && !nicClockwise){
+                            NS_LOG_INFO("Adding (" << id << ")[" << interface << "] for " << id << "->" << dst->GetId());
+                            node->GetObject<RdmaDriver>()->m_rdma->AddTableEntry(dstAddr, interface);        
+                        }
+
+                    }
                     node->GetObject<RdmaDriver>()->m_rdma->AddTableEntry(dstAddr, interface);
                 }
                 // For OCSNodes forwarding decisions are according to configuration / port mapping

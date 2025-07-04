@@ -4,12 +4,12 @@ set -e
 
 # Direct connect ring topologies
 
-testIteration="48" # prefix in outputDir
+testIteration="51" # prefix in outputDir
 
-numNodes=8
-bandwidthStr="1Gbps"
-propDelay="500ns"
-workloadBytes="8000"
+numNodes=16
+bandwidthStr="400Gbps"
+propDelay="100ns"
+workloadBytes="10000"
 
 # cmd is mandatory arg
 if [ -z "$1" ]; then
