@@ -4,7 +4,7 @@ set -e
 
 # Direct connect ring topologies
 
-testIteration="51" # prefix in outputDir
+testIteration="52" # prefix in outputDir
 
 numNodes=16
 bandwidthStr="400Gbps"

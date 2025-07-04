@@ -397,7 +397,6 @@ SetRoutingEntries(bool afterFailure)
             Ptr<Node> dst = j->first;
             Ipv4Address dstAddr = dst->GetObject<Ipv4>()->GetAddress(1, 0).GetLocal();
             vector<Ptr<Node>> nexts = j->second;
-            NS_LOG_INFO("node: "<< node->GetId() << ", dstAddr: " << dst->GetId() << ", nexts size: " << nexts.size());
             for (int k = 0; k < (int)nexts.size(); k++)
             {
                 Ptr<Node> next = nexts[k];
@@ -413,7 +412,6 @@ SetRoutingEntries(bool afterFailure)
                 else if (node->GetNodeType() == 0)
                 {
                     if (node_forwarding && nexts.size() > 1){ // equal cost paths on the ring (halfway)
-                        NS_LOG_INFO("SetRoutingEntries for ring and equal costs");
                         // calculate direction based on node id and ring size
                         int ringSize = table.size() + 1; // table doesn't include itself
                         int id = node->GetId();
@@ -424,13 +422,19 @@ SetRoutingEntries(bool afterFailure)
                         // only add the next hop going in that direction
                         bool nicClockwise = next->GetId() == id + 1 % ringSize;
 
-                        if (flowClockwise && nicClockwise || !flowClockwise && !nicClockwise){
-                            NS_LOG_INFO("Adding (" << id << ")[" << interface << "] for " << id << "->" << dst->GetId());
+                        if (flowClockwise && nicClockwise){
+                            NS_LOG_INFO("Adding Clockwise Routing (" << id << ")[" << interface << "] for " << id << "->" << dst->GetId());
                             node->GetObject<RdmaDriver>()->m_rdma->AddTableEntry(dstAddr, interface);        
+                        } 
+                        else if (!flowClockwise && !nicClockwise){
+                            NS_LOG_INFO("Adding Counter-Clockwise Routing(" << id << ")[" << interface << "] for " << id << "->" << dst->GetId());
+                            node->GetObject<RdmaDriver>()->m_rdma->AddTableEntry(dstAddr, interface); 
                         }
-
+                        //else don't add the nic to routeTable
                     }
-                    node->GetObject<RdmaDriver>()->m_rdma->AddTableEntry(dstAddr, interface);
+                    else{
+                        node->GetObject<RdmaDriver>()->m_rdma->AddTableEntry(dstAddr, interface);
+                    }
                 }
                 // For OCSNodes forwarding decisions are according to configuration / port mapping
             }
