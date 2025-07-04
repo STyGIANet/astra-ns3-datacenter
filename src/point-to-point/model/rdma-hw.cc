@@ -250,7 +250,8 @@ void RdmaHw::Setup(QpCompleteCallback cb){
 uint32_t RdmaHw::GetNicIdxOfQp(Ptr<RdmaQueuePair> qp){
 	auto &v = m_rtTable[qp->dip.Get()];
 	if (v.size() > 0){
-		return v[qp->GetHash() % v.size()];
+		return v[0];
+		//return v[qp->GetHash() % v.size()];
 	}else{
 		NS_ASSERT_MSG(false, "We assume at least one NIC is alive");
 	}

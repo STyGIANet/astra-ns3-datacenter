@@ -1,15 +1,29 @@
 #!/bin/bash
 
-DEBUG=0
+set -e
 
 # Direct connect ring topologies
 
-testIteration="Test-38" # prefix in outputDir
+testIteration="48" # prefix in outputDir
 
-numNodes=11
-bandwidthStr="11Gbps"
-propDelay="111ns"
-workloadBytes="1111"
+numNodes=8
+bandwidthStr="1Gbps"
+propDelay="500ns"
+workloadBytes="8000"
+
+# cmd is mandatory arg
+if [ -z "$1" ]; then
+  echo "Usage: $0 <cmd> [--log]"
+  exit 1
+fi
+
+cmd="$1" # cmd to pass to build script, --run, --debug, --clean 
+log=0  # default: logging off
+
+#bool, write simulation output to log
+if [ "$2" == "--log" ]; then
+  log=1
+fi
 
 # input dirs
 astraDir="/app/astra-sim"
@@ -135,9 +149,7 @@ fi
 # check that everything we just generated exists
 # Final verification
 echo ""
-echo ""
 echo "Verifying generated files..."
-echo ""
 echo ""
 
 missing=0
@@ -170,21 +182,26 @@ fi
 cd ${buildDir} || exit 6
 # call build with params and record log
 
-echo "Running Simulation. Logging to ${generalOutputDir}/${thisOutputDir}/${logName}"
-echo ""
+if [ "$log" -eq 0 ]; then
+	echo ""
+	echo "Running Simulation. Not logging"
+	echo ""
 
-if [ "$DEBUG" -eq 1 ]; then
-    ./build_with_files.sh \
-        --workload "${genWorkloadDir}/${workloadFile}" \
+	./build_with_files.sh \
+	--workload "${genWorkloadDir}/${workloadFile}" \
         --logical-topology "${systemDir}/${logicalTopoFile}" \
         --network "${configDir}/${configFile}" \
-        --debug
+        ${cmd}
 else
-    ./build_with_files.sh \
+	echo ""
+	echo "Running Simulation. Logging to ${generalOutputDir}/${thisOutputDir}/${logName}"
+	echo ""
+	
+	./build_with_files.sh \
         --workload "${genWorkloadDir}/${workloadFile}" \
         --logical-topology "${systemDir}/${logicalTopoFile}" \
         --network "${configDir}/${configFile}" \
-        --run > ${logName} 2>&1
+        ${cmd} > ${logName} 2>&1
 fi
 
 # make result dir
