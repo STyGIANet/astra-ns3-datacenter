@@ -3,9 +3,9 @@ USE_DYNAMIC_PFC_THRESHOLD 1
 
 PACKET_PAYLOAD_SIZE 1000
 
-TOPOLOGY_FILE ../../scratch/topology/SLOW_no_ocs_direct_connect_ring_16_nodes.json
+TOPOLOGY_FILE ../../scratch/topology/SLOW_no_ocs_direct_connect_ring_64_nodes.json
 TOPOLOGY_FILE_FORMAT json
-RECONFIG_FILE ../../scratch/topology/ocs_static_ring_16_nodes.json
+RECONFIG_FILE ../../scratch/topology/ocs_static_ring_64_nodes.json
 FLOW_FILE ../../scratch/output/flow.txt
 TRACE_FILE ../../scratch/output/trace.txt
 TRACE_OUTPUT_FILE ../../scratch/output/mix.tr
@@ -18,7 +18,7 @@ QLEN_MON_END 20000
 
 SIMULATOR_STOP_TIME 40000000000000.00
 
-CC_MODE 12
+CC_MODE 1
 ALPHA_RESUME_INTERVAL 1
 RATE_DECREASE_INTERVAL 4
 CLAMP_TARGET_RATE 0
@@ -35,8 +35,8 @@ L2_CHUNK_SIZE 0
 L2_ACK_INTERVAL 1
 L2_BACK_TO_ZERO 0
 
-HAS_WIN 1
-GLOBAL_T 1
+HAS_WIN 0
+GLOBAL_T 0
 VAR_WIN 1
 FAST_REACT 1
 U_TARGET 0.95
