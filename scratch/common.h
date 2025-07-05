@@ -59,6 +59,7 @@ std::string topology_file_format = "standard"; // classic text-based format
 std::string reconfig_file = "";
 std::string fct_output_file = "fct.txt";
 std::string pfc_output_file = "pfc.txt";
+std::string ring_routing = "EQUAL"; //equally divide pairs to ring directions for minimal congestion
 
 double alpha_resume_interval = 55, rp_timer, ewma_gain = 1 / 16;
 double rate_decrease_interval = 4;
@@ -418,12 +419,18 @@ SetRoutingEntries(bool afterFailure)
                         int pair = id % (ringSize / 2); // nodes exactly n/2 apart are part of the same pair
                         NS_ASSERT(id == pair || dst->GetId() == pair); // assuming linear, 0-indexed IDs (the residual class is the id of one node in the pair)
                         
-                        // routing pairs in same direction (minimal congestion)
-                        bool flowClockwise = pair % 2 == 0;// half of the pairs clockwise
-
-                        // routing according to halvingDoubling directions: within a pair one is clockwise, one is counterclockwise
-                        // based on HalvingDoubling::specify_direction : (((RingTopology*)logical_topo)->get_index_in_ring() / rank_offset) % 2;
-                        // bool flowClockwise = (id / (ringSize / 2) % 2) == 0;
+                        bool flowClockwise = true;
+                        if (ring_routing == "HALVINGDOUBLING"){
+                            NS_LOG_INFO("Routing according to halvingDoubling directions");
+                            // routing according to halvingDoubling directions: within a pair one is clockwise, one is counterclockwise
+                            // based on HalvingDoubling::specify_direction : (((RingTopology*)logical_topo)->get_index_in_ring() / rank_offset) % 2;
+                            flowClockwise = (id / (ringSize / 2) % 2) == 0;
+                        }
+                        else{ // e.g. RING_ROUTING_STRATEGY in config.txt == EQUAL 
+                            NS_LOG_INFO("Routing according to ideal, equal routing");
+                            // routing pairs in same direction for minimal congestion
+                            flowClockwise = pair % 2 == 0;// half of the pairs clockwise
+                        }
 
                         // only add the next hop going in that direction
                         bool nicClockwise = next->GetId() == (id + 1) % ringSize;
@@ -610,6 +617,13 @@ ReadConf(string network_configuration)
             std::string v;
             conf >> v;
             reconfig_file = v;
+        }
+        else if (key.compare("RING_ROUTING_STRATEGY") == 0)
+        {
+            std::string v;
+            conf >> v;
+            ring_routing = v;
+            std::transform(ring_routing.begin(), ring_routing.end(), ring_routing.begin(), ::toupper); //case-insensitive comparision to HALVINGDOUBLING
         }
         else if (key.compare("FLOW_FILE") == 0)
         {
