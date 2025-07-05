@@ -13,13 +13,11 @@ if [ "$2" == "--log" ]; then
 fi
 
 # ========== CONFIGURATION ==========
-testIteration="57_equal_routing"
-
-# Arrays of configurations
-bandwidthStrs=("1Gbps" "400Gbps")
-propDelays=("500ns" "100ns")
-numNodesList=(8 16)
-workloadSizes=("1000" "10000" "100000")
+routingStrategies=("equal" "halvingDoubling")
+bandwidthStrs=("400Gbps" "400Gbps" "400Gbps" "400Gbps" "400Gbps")
+propDelays=("5ns" "20ns" "100ns" "200ns" "400ns")
+numNodesList=(8 16 32 64)
+workloadSizes=("1000" "10000" "20000" "100000" "200000")
 
 # Directories
 astraDir="/app/astra-sim"
@@ -31,45 +29,53 @@ generalOutputDir="${astraDir}/extern/network_backend/ns-3/scratch/output"
 buildDir="${astraDir}/build/astra_ns3"
 mkdir -p "${generalOutputDir}/results/logs"
 
-# Loop over all combinations
-for i in "${!bandwidthStrs[@]}"; do
-  bandwidthStr="${bandwidthStrs[$i]}"
-  propDelay="${propDelays[$i]}"
-  
-  for numNodes in "${numNodesList[@]}"; do
-    for workloadBytes in "${workloadSizes[@]}"; do
-      
-      topoFile="direct_connect_ring_${numNodes}_nodes_${bandwidthStr}_${propDelay}.json"
-      reconfigFile="ocs_static_ring_${numNodes}_nodes.json"
-      configFile="config_ocs_static_${numNodes}_${bandwidthStr}_${propDelay}.txt"
-      logicalTopoFile="sample_${numNodes}nodes_1D.json"
-      workloadFile="AllGather${workloadBytes}B_${numNodes}/AllGather${workloadBytes}B_${numNodes}"
-      thisOutputDir="results"
-      logName="${testIteration}_ring_${numNodes}n_${workloadBytes}B_${bandwidthStr}_${propDelay}.log"
+# ========== LOOP ==========
+for routingStrategy in "${routingStrategies[@]}"; do
 
-      echo ""
-      echo "=== Running: ${numNodes} nodes | ${bandwidthStr} | ${propDelay} | ${workloadBytes}B ==="
-      echo ""
+  testIteration="58_${routingStrategy}_routing"
 
-      # Generate topology
-      cd "${topoDir}" || exit 1
-      [ -f "$topoFile" ] || python generate_direct_connect_ring.py --nodes ${numNodes} --bandwidth ${bandwidthStr} --latency ${propDelay} --output ./${topoFile}
+  for i in "${!bandwidthStrs[@]}"; do
+    bandwidthStr="${bandwidthStrs[$i]}"
+    propDelay="${propDelays[$i]}"
 
-      # Generate reconfig schedule
-      [ -f "$reconfigFile" ] || ./generate_direct_connect_reconfig.sh "$numNodes"
+    for numNodes in "${numNodesList[@]}"; do
+      for workloadBytes in "${workloadSizes[@]}"; do
 
-      # Generate config
-      cd "${configDir}" || exit 2
-      if [ ! -f "$configFile" ]; then
-      cat > "$configFile" <<EOF
+        # Filenames (include strategy)
+        topoFile="direct_connect_ring_${numNodes}_nodes_${bandwidthStr}_${propDelay}.json"
+        reconfigFile="ocs_static_ring_${numNodes}_nodes.json"
+        configFile="config_ocs_static_${routingStrategy}_${numNodes}_${bandwidthStr}_${propDelay}.txt"
+        logicalTopoFile="sample_${numNodes}nodes_1D.json"
+        workloadFile="AllGather${workloadBytes}B_${numNodes}/AllGather${workloadBytes}B_${numNodes}"
+        thisOutputDir="results"
+        logName="${testIteration}_ring_${numNodes}n_${workloadBytes}B_${bandwidthStr}_${propDelay}.log"
+        fctName="${testIteration}_ring_${numNodes}n_${workloadBytes}B_${bandwidthStr}_${propDelay}_fct.txt"
+
+        echo ""
+        echo "=== Running: ${routingStrategy} | ${numNodes} nodes | ${bandwidthStr} | ${propDelay} | ${workloadBytes}B ==="
+        echo ""
+
+        # --- Generate topology ---
+        cd "${topoDir}" || exit 1
+        [ -f "$topoFile" ] || python generate_direct_connect_ring.py \
+          --nodes ${numNodes} --bandwidth ${bandwidthStr} --latency ${propDelay} --output ./${topoFile}
+
+        # --- Reconfig schedule ---
+        [ -f "$reconfigFile" ] || ./generate_direct_connect_reconfig.sh "$numNodes"
+
+        # --- Config file ---
+        cd "${configDir}" || exit 2
+        if [ ! -f "$configFile" ]; then
+          cat > "$configFile" <<EOF
 ENABLE_QCN 1
 USE_DYNAMIC_PFC_THRESHOLD 1
-
 PACKET_PAYLOAD_SIZE 1000
 
 TOPOLOGY_FILE ../../scratch/topology/${topoFile}
 TOPOLOGY_FILE_FORMAT json
 RECONFIG_FILE ../../scratch/topology/${reconfigFile}
+RING_ROUTING_STRATEGY ${routingStrategy}
+
 FLOW_FILE ../../scratch/output/flow.txt
 TRACE_FILE ../../scratch/output/trace.txt
 TRACE_OUTPUT_FILE ../../scratch/output/mix.tr
@@ -78,7 +84,6 @@ PFC_OUTPUT_FILE ../../scratch/output/pfc.txt
 QLEN_MON_FILE ../../scratch/output/qlen.txt
 QLEN_MON_START 0
 QLEN_MON_END 20000
-
 
 SIMULATOR_STOP_TIME 40000000000000.00
 
@@ -113,11 +118,8 @@ PINT_PROB 1.0
 NIC_TOTAL_PAUSE_TIME 0
 
 RATE_BOUND 1
-
 ACK_HIGH_PRIO 0
-
 LINK_DOWN 0 0 0
-
 ENABLE_TRACE 1
 
 KMAX_MAP 6 25000000000 400 40000000000 800 100000000000 1600 200000000000 2400 400000000000 3200 2400000000000 3200
@@ -125,64 +127,61 @@ KMIN_MAP 6 25000000000 100 40000000000 200 100000000000 400 200000000000 600 400
 PMAX_MAP 6 25000000000 0.2 40000000000 0.2 100000000000 0.2 200000000000 0.2 400000000000 0.2 2400000000000 0.2
 
 BUFFER_SIZE 32
-
 RTO 100000000000
-
 EOF
-      fi
+        fi
 
-      # Generate logical topo
-      cd "${systemDir}" || exit 3
-      [ -f "$logicalTopoFile" ] || ./generate_logical_topo.sh ${numNodes}
+        # --- Logical topology ---
+        cd "${systemDir}" || exit 3
+        [ -f "$logicalTopoFile" ] || ./generate_logical_topo.sh ${numNodes}
 
-      # Generate workload
-      cd "${genWorkloadDir}" || exit 4
-      [ -d "AllGather${workloadBytes}B_${numNodes}" ] || ./generate_allgather.sh ${workloadBytes} ${numNodes}
+        # --- Workload ---
+        cd "${genWorkloadDir}" || exit 4
+        [ -d "AllGather${workloadBytes}B_${numNodes}" ] || ./generate_allgather.sh ${workloadBytes} ${numNodes}
 
-      # Verify all generated files exist
-      echo ""
-      echo "Verifying files..."
-      echo ""
-      missing=0
-      for file in \
-        "${topoDir}/${topoFile}" \
-        "${topoDir}/${reconfigFile}" \
-        "${configDir}/${configFile}" \
-        "${systemDir}/${logicalTopoFile}" \
-        "${genWorkloadDir}/${workloadFile}.0.et"; do
-          [ -f "$file" ] && echo "[OK] $file" || { echo "[MISSING] $file"; missing=1; }
+        # --- Verification ---
+        echo ""
+        echo "Verifying files..."
+        echo ""
+        missing=0
+        for file in \
+          "${topoDir}/${topoFile}" \
+          "${topoDir}/${reconfigFile}" \
+          "${configDir}/${configFile}" \
+          "${systemDir}/${logicalTopoFile}" \
+          "${genWorkloadDir}/${workloadFile}.0.et"; do
+            [ -f "$file" ] && echo "[OK] $file" || { echo "[MISSING] $file"; missing=1; }
+        done
+        [ "$missing" -eq 1 ] && echo "!! Missing files, skipping run." && continue
+
+        # --- Run simulation ---
+        cd "${buildDir}" || exit 6
+        echo "Running Simulation..."
+        if [ "$log" -eq 0 ]; then
+          ./build_with_files.sh \
+            --workload "${genWorkloadDir}/${workloadFile}" \
+            --logical-topology "${systemDir}/${logicalTopoFile}" \
+            --network "${configDir}/${configFile}" \
+            ${cmd}
+        else
+          ./build_with_files.sh \
+            --workload "${genWorkloadDir}/${workloadFile}" \
+            --logical-topology "${systemDir}/${logicalTopoFile}" \
+            --network "${configDir}/${configFile}" \
+            ${cmd} > "${logName}" 2>&1
+        fi
+
+        # --- Archive results ---
+        cd "${generalOutputDir}" || exit 7
+        mkdir -p "${thisOutputDir}"
+        [ -f fct.txt ] && mv fct.txt "${thisOutputDir}/${fctName}" || { echo "Missing fct.txt"; continue; }
+        [ "$log" -eq 1 ] && mv "${buildDir}/${logName}" "${thisOutputDir}/logs/${logName}"
+
+        echo ""
+        echo "=== Done: ${routingStrategy} | ${numNodes} | ${bandwidthStr} | ${propDelay} | ${workloadBytes}B ==="
+        echo ""
+
       done
-      [ "$missing" -eq 1 ] && echo "!! Missing files, skipping run." && continue
-
-      # Run build with files
-      cd "${buildDir}" || exit 6
-      echo ""
-      echo "Running Simulation..."
-      if [ "$log" -eq 0 ]; then
-        ./build_with_files.sh \
-          --workload "${genWorkloadDir}/${workloadFile}" \
-          --logical-topology "${systemDir}/${logicalTopoFile}" \
-          --network "${configDir}/${configFile}" \
-          ${cmd}
-      else
-        ./build_with_files.sh \
-          --workload "${genWorkloadDir}/${workloadFile}" \
-          --logical-topology "${systemDir}/${logicalTopoFile}" \
-          --network "${configDir}/${configFile}" \
-          ${cmd} > "${logName}" 2>&1
-      fi
-
-      # Archive results
-      cd "${generalOutputDir}" || exit 7
-      mkdir -p "${thisOutputDir}"
-      fctName="${testIteration}_ring_${numNodes}n_${workloadBytes}B_${bandwidthStr}_${propDelay}_fct.txt"
-      [ -f fct.txt ] && mv fct.txt "${thisOutputDir}/${fctName}" || { echo "Missing fct.txt"; continue; }
-      [ "$log" -eq 1 ] && mv "${buildDir}/${logName}" "${thisOutputDir}/logs/${logName}"
-
-      echo ""      
-      echo "=== Done: ${numNodes} | ${bandwidthStr} | ${propDelay} | ${workloadBytes}B ==="
-      echo ""
-
     done
   done
 done
