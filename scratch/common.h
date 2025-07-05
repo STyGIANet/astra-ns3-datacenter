@@ -416,11 +416,17 @@ SetRoutingEntries(bool afterFailure)
                         int ringSize = table.size() + 1; // table doesn't include itself
                         int id = node->GetId();
                         int pair = id % (ringSize / 2); // nodes exactly n/2 apart are part of the same pair
-                        NS_ASSERT(id == pair || dst->GetId() == pair); // assuming linear, 0-indexed IDs
-                        bool flowClockwise = pair % 2 == 0;// half of the pairs clockwise
+                        NS_ASSERT(id == pair || dst->GetId() == pair); // assuming linear, 0-indexed IDs (the residual class is the id of one node in the pair)
+                        
+                        // routing pairs in same direction
+                        //bool flowClockwise = pair % 2 == 0;// half of the pairs clockwise
+
+                        // routing according to halvingDoubling directions: within a pair one is clockwise, one is counterclockwise
+                        // based on HalvingDoubling::specify_direction : (((RingTopology*)logical_topo)->get_index_in_ring() / rank_offset) % 2;
+                        bool flowClockwise = (id / (ringSize / 2) % 2) == 0;
 
                         // only add the next hop going in that direction
-                        bool nicClockwise = next->GetId() == id + 1 % ringSize;
+                        bool nicClockwise = next->GetId() == (id + 1) % ringSize;
 
                         if (flowClockwise && nicClockwise){
                             NS_LOG_INFO("Adding Clockwise Routing (" << id << ")[" << interface << "] for " << id << "->" << dst->GetId());
