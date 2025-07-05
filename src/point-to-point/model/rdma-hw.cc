@@ -250,6 +250,7 @@ void RdmaHw::Setup(QpCompleteCallback cb){
 uint32_t RdmaHw::GetNicIdxOfQp(Ptr<RdmaQueuePair> qp){
 	auto &v = m_rtTable[qp->dip.Get()];
 	if (v.size() > 0){
+		NS_ASSERT(v.size() == 1); // for testing deterministic ring routing in SetRoutingEntries
 		return v[0];
 		//return v[qp->GetHash() % v.size()];
 	}else{
