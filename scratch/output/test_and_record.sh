@@ -4,11 +4,11 @@ set -e
 
 # Direct connect ring topologies
 
-testIteration="52" # prefix in outputDir
+testIteration="Test_53" # prefix in outputDir
 
 numNodes=16
-bandwidthStr="400Gbps"
-propDelay="100ns"
+bandwidthStr="1Gbps"
+propDelay="500ns"
 workloadBytes="10000"
 
 # cmd is mandatory arg
@@ -42,7 +42,8 @@ logicalTopoFile="sample_${numNodes}nodes_1D.json"
 workloadFile="AllGather${workloadBytes}B_${numNodes}/AllGather${workloadBytes}B_${numNodes}" # used for build script and verification that workload was successfully generated
 
 # outputdirs
-thisOutputDir="${testIteration}_ring_${numNodes}n_${workloadBytes}B_${bandwidthStr}_${propDelay}"
+thisOutputDir="results"
+#thisOutputDir="${testIteration}_ring_${numNodes}n_${workloadBytes}B_${bandwidthStr}_${propDelay}"
 logName="${testIteration}_ring_${numNodes}n_${workloadBytes}B_${bandwidthStr}_${propDelay}.log"
 
 # generate topo
@@ -210,7 +211,7 @@ mkdir -p ${thisOutputDir}
 
 # move fct into result dir 
 if [ -f "fct.txt" ]; then
-    mv fct.txt ${thisOutputDir}
+    mv fct.txt ${generalOutputDir}/${thisOutputDir}/"${testIteration}_ring_${numNodes}n_${workloadBytes}B_${bandwidthStr}_${propDelay}_fct.txt"
 else
     echo "Error: no fct.txt found"
     exit 8
@@ -218,7 +219,7 @@ fi
 
 # copy log into result dir
 if [ -f ${buildDir}/${logName} ]; then
-    mv ${buildDir}/${logName} ${generalOutputDir}/${thisOutputDir}
+    mv ${buildDir}/${logName} ${generalOutputDir}/${thisOutputDir}/logs/${logName}
 else
     echo "Error: fct found but no log found"
     exit 9
