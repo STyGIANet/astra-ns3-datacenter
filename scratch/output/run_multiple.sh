@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+# RUNNING ALLREDUCE AT THE MOMENT even though file name is Allgather
+
 # Mandatory command argument
 if [ -z "$1" ]; then
   echo "Usage: $0 <cmd> [--log]"
@@ -13,11 +15,12 @@ if [ "$2" == "--log" ]; then
 fi
 
 # ========== CONFIGURATION ==========
-routingStrategies=("equal" "halvingDoubling")
-bandwidthStrs=("400Gbps" "400Gbps" "400Gbps" "400Gbps" "400Gbps")
-propDelays=("5ns" "20ns" "100ns" "200ns" "400ns")
-numNodesList=(8 16 32 64)
-workloadSizes=("1000" "10000" "20000" "100000" "200000")
+routingStrategies=("halvingDoubling")
+bandwidthStrs=("800Gbps" "800Gbps" "800Gbps" "800Gbps" "800Gbps" "800Gbps")
+propDelays=("5ns" "10ns" "20ns" "100ns" "200ns" "400ns")
+numNodesList=(16)
+#workloadSizes=("32" "32000" "32000000")
+workloadSizes=("64000")
 
 # Directories
 astraDir="/app/astra-sim"
@@ -32,7 +35,7 @@ mkdir -p "${generalOutputDir}/results/logs"
 # ========== LOOP ==========
 for routingStrategy in "${routingStrategies[@]}"; do
 
-  testIteration="58_${routingStrategy}_routing"
+  testIteration="68_halvingDoubling-allreduce-no-endpoint-delay_${routingStrategy}_routing"
 
   for i in "${!bandwidthStrs[@]}"; do
     bandwidthStr="${bandwidthStrs[$i]}"
