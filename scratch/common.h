@@ -990,6 +990,23 @@ void setupOCS(json reconfigJson, NodeContainer n){
         AstraSim::reconfigSched& sched = AstraSim::reconfigSched::getScheduler();
         sched.setOCSNode(GetPointer(ocsNode)); // increases ref count on ocsNode, reconfigSched needs to decrement on exit
         sched.setDaMode(true); // ensures that collective algorithms coordinate with demand-aware scheduling, e.g. wait reconfigDelay ns between rounds when require     
+        // apply initial portmap from configs with timestamp 0 if it exists
+        for (const auto& config : configs)
+        {
+            if (config["start_time"] == 0)
+            {
+                std::map<uint32_t, uint32_t> initialMap;
+                for (auto it = config["port_mapping"].begin(); it != config["port_mapping"].end(); ++it)
+                {
+                    uint32_t inPort = std::stoul(it.key());
+                    uint32_t outPort = it.value();
+                    initialMap[inPort] = outPort;
+                }
+                NS_LOG_INFO("Applying initial portmap for demand-aware OCSNode");
+                ocsNode->SetPortMap(initialMap);
+                break;  // Only one initial config expected
+            }
+        }
     }
     else // demand-oblivious with static (given) timetable of fixed reconfigurations
     {
