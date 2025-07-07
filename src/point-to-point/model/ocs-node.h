@@ -33,6 +33,8 @@ public:
 
   Time GetReconfigDelay();
 
+  std::pair<Ptr<Node>, Ptr<NetDevice>> GetNeighbourInfo(Ptr<NetDevice> inNetDev);
+
 protected:
   virtual void DoInitialize (void) override;
 

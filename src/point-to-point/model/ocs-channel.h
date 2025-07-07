@@ -47,6 +47,9 @@ public:
    */
   Time GetDelay() const;
 
+  // Get the other device connected to this channel
+  Ptr<NetDevice> GetOtherDev(Ptr<NetDevice> src);
+
 };
 
 } // namespace ns3

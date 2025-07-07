@@ -7,7 +7,6 @@
 #include "ocs-node.h"
 #include "ocs-net-device.h"
 
-
 NS_LOG_COMPONENT_DEFINE("OCSNode");
 namespace ns3 {
 
@@ -172,6 +171,40 @@ bool OCSNode::VerifyDevicePortNum(Ptr<NetDevice> dev, uint32_t portNum){
 Time OCSNode::GetReconfigDelay(){
   NS_LOG_FUNCTION(this);
   return m_reconfigTime;
+}
+
+std::pair<Ptr<Node>, Ptr<NetDevice>> OCSNode::GetNeighbourInfo(Ptr<NetDevice> inNetDev)
+{
+  
+  Ptr<OCSNetDevice> inDev = DynamicCast<OCSNetDevice>( inNetDev);
+  NS_ASSERT(inDev);
+
+  // get corresponding outPort in OCS according to portMap
+  uint32_t inPort = inDev->GetIfIndex() - 1;
+  auto it = m_portMap.find(inPort);
+
+  if (it != m_portMap.end()) {
+    size_t outPort = static_cast<size_t> (it->second);
+
+    if ( outPort + 1 >= m_devices.size() ){
+      NS_LOG_ERROR(Simulator::Now().GetTimeStep() << ": OCSNode - no connected neighbour to return for OCS inPort: " << inPort);
+    }
+
+    Ptr<OCSNetDevice> outDevice = DynamicCast<OCSNetDevice>( GetDevice(outPort + 1) );
+    NS_ASSERT_MSG(outDevice, "OCSNode - no connected neighbour to return for OCS inPort: " << inPort);
+    
+    // follow outPort and return node connected to that channel
+    Ptr<OCSChannel> ch = DynamicCast<OCSChannel>( outDevice->GetChannel() );
+    NS_ASSERT(ch);
+
+    Ptr<NetDevice> otherNetDev = ch->GetOtherDev(outDevice);
+    NS_ASSERT(otherNetDev);
+
+    return std::make_pair(otherNetDev->GetNode(), otherNetDev);
+  }
+
+  NS_FATAL_ERROR("OCSNode - no connected neighbour to return for OCS inPort: " << inPort);
+  return {nullptr, nullptr}; // Unreachable
 }
 
 } // namespace ns3

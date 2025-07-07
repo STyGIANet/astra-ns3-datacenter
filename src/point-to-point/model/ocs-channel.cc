@@ -86,7 +86,17 @@ OCSChannel::TransmitStart (Ptr<Packet> p, Ptr<NetDevice> src, Time txTime)
 Time
 OCSChannel::GetDelay() const
 {
+    NS_LOG_FUNCTION(this);
     return m_delay;
+}
+
+Ptr<NetDevice> OCSChannel::GetOtherDev(Ptr<NetDevice> src){
+  NS_LOG_FUNCTION(this << src);
+
+  // Determine which link corresponds to the source device.
+  uint32_t wire = (src == m_link[0].m_src) ? 0 : 1;
+  
+  return m_link[wire].m_dst;
 }
 
 } // namespace ns3
