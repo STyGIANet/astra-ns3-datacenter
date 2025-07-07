@@ -59,7 +59,7 @@ std::string topology_file_format = "standard"; // classic text-based format
 std::string reconfig_file = "";
 std::string fct_output_file = "fct.txt";
 std::string pfc_output_file = "pfc.txt";
-std::string ring_routing = "EQUAL"; //equally divide pairs to ring directions for minimal congestion
+std::string ring_routing = "HALVINGDOUBLING"; // follow halvingDoubling directions, alternative: "EQUAL" - equally divide pairs to ring directions for minimal congestion
 
 double alpha_resume_interval = 55, rp_timer, ewma_gain = 1 / 16;
 double rate_decrease_interval = 4;
@@ -200,6 +200,25 @@ struct QlenDistribution
 };
 
 map<uint32_t, map<uint32_t, uint32_t>> queue_result;
+
+// used for splitting link intiailisation and filling nbr2if for ocs-connected topologies
+struct LinkInfo {
+  Ptr<Node> srcNode;
+  Ptr<Node> dstNode;
+  Ptr<NetDevice> srcDev;
+  Ptr<NetDevice> dstDev;
+  uint64_t channelDelay;
+  uint64_t srcBw;
+  uint64_t dstBw;
+  uint32_t srcIfIdx;
+  uint32_t dstIfIdx;
+  bool srcIsOCS;
+  bool dstIsOCS;
+};
+
+std::vector<LinkInfo> ocs_links;
+bool usingOCS = false;
+// even when using OCS topofile, we might not actually be connecting to the OCS for direct-connect topologies
 
 // void
 // monitor_buffer(FILE* qlen_output, NodeContainer* n)
@@ -1311,20 +1330,38 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             d_bw = ddev->GetDataRate().GetBitRate(); 
             printf(" %d | %d |  [%d]:%p  |  [%d]:%p  \n", snode->GetId(), dnode->GetId(), s_idx, PeekPointer(sdev), d_idx, PeekPointer(ddev));
             fflush(stdout);           
+
+            // source -> destination 
+            nbr2if[snode][dnode].idx = s_idx;
+            nbr2if[snode][dnode].up = true;
+            nbr2if[snode][dnode].delay = channel_delay;
+            nbr2if[snode][dnode].bw = s_bw;
+            // destination -> source, usually same bw - full duplex
+            nbr2if[dnode][snode].idx = d_idx;
+            nbr2if[dnode][snode].up = true;
+            nbr2if[dnode][snode].delay = channel_delay;
+            nbr2if[dnode][snode].bw = d_bw;
         }
 
-        
-        // source -> destination 
-        nbr2if[snode][dnode].idx = s_idx;
-        nbr2if[snode][dnode].up = true;
-        nbr2if[snode][dnode].delay = channel_delay;
-        nbr2if[snode][dnode].bw = s_bw;
-        // destination -> source, usually same bw - full duplex
-        nbr2if[dnode][snode].idx = d_idx;
-        nbr2if[dnode][snode].up = true;
-        nbr2if[dnode][snode].delay = channel_delay;
-        nbr2if[dnode][snode].bw = d_bw;
-        fflush(stdout);
+        // for ocs connections: delaying writing nbr2if until all links are iniatlized
+        LinkInfo info;
+        info.srcNode = snode;
+        info.dstNode = dnode;
+        info.srcDev = d.Get(0);
+        info.dstDev = d.Get(1);
+        info.srcIfIdx = s_idx;
+        info.dstIfIdx = d_idx;
+        info.channelDelay = channel_delay;
+        info.srcBw = s_bw;
+        info.dstBw = d_bw;
+        info.srcIsOCS = snodeIsOCS != nullptr;
+        info.dstIsOCS = dnodeIsOCS != nullptr;
+
+        if (info.srcIsOCS || info.dstIsOCS)
+            usingOCS = true;
+
+        ocs_links.push_back(info);
+
         // This is just to set up the connectivity between nodes. The IP addresses
         // are useless
         char ipstring[16];
@@ -1345,6 +1382,50 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         }
     }
 
+
+    // set nbr2if after all links and NetDevices are initialized
+    if (usingOCS) {
+        for (const auto& link : ocs_links) {
+            Ptr<Node> a = link.srcNode;
+            Ptr<Node> b = link.dstNode;
+            uint32_t realSrcIdx = link.srcIfIdx;
+            uint32_t realDstIdx = link.dstIfIdx;
+
+            // Transparent neighbor remapping if either side is OCS
+            if (link.srcIsOCS) {
+                Ptr<OCSNode> ocs = DynamicCast<OCSNode>(a);
+                NS_ASSERT(ocs);
+
+                auto [realSrc, realSrcDev] = ocs->GetNeighbourInfo(link.srcDev);
+
+                a = realSrc; // pretend OCS is transparent
+                realSrcIdx = realSrcDev->GetIfIndex();
+            }
+            if (link.dstIsOCS) {
+                Ptr<OCSNode> ocs = DynamicCast<OCSNode>(b);
+                NS_ASSERT(ocs);
+
+                auto [realDst, realDstDev] = ocs->GetNeighbourInfo(link.dstDev);
+
+                b = realDst; // pretend OCS is transparent
+                realDstIdx = realDstDev->GetIfIndex();
+            }
+
+            // If after substitution a==b (e.g., loop), skip
+            if (a == b) continue;
+
+            // fill symmetric neighbor map as if OCS-connections are fixed 
+            nbr2if[a][b].idx = realSrcIdx;
+            nbr2if[a][b].up = true;
+            nbr2if[a][b].delay = link.channelDelay;
+            nbr2if[a][b].bw = link.srcBw;
+
+            nbr2if[b][a].idx = realDstIdx;
+            nbr2if[b][a].up = true;
+            nbr2if[b][a].delay = link.channelDelay;
+            nbr2if[b][a].bw = link.dstBw;
+            }
+    }
 
 
     nic_rate = get_nic_rate(n);
