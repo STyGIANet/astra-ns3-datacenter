@@ -3,9 +3,9 @@ USE_DYNAMIC_PFC_THRESHOLD 1
 
 PACKET_PAYLOAD_SIZE 1000
 
-TOPOLOGY_FILE ../../scratch/topology/ocs_16_double-interface_800Gbps_200ns.json
+TOPOLOGY_FILE ../../scratch/topology/ocs_8_nodes_double-interface.json
 TOPOLOGY_FILE_FORMAT json
-RECONFIG_FILE ../../scratch/topology/reconfig_16nodes_ring.json
+RECONFIG_FILE ../../scratch/topology/reconfig_8nodes_ring.json
 RING_ROUTING_STRATEGY HALVINGDOUBLING
 FLOW_FILE ../../scratch/output/flow.txt
 TRACE_FILE ../../scratch/output/trace.txt
