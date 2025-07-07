@@ -33,12 +33,14 @@ def parse_file(fname):
     rows = []
     for round_idx, size in enumerate(sorted(grouped.keys())):
         round_flows = grouped[size]
-        max_fct = max(flow["fct(ns)"] for flow in round_flows)
+        max_flow = max(round_flows, key=lambda row: row["fct(ns)"])
         rows.append({
             **metadata,
             "round": round_idx,
             "round_size": int(size),
-            "max_fct": int(max_fct)
+            "max_fct": int(max_flow["fct(ns)"]),
+            "src_of_max_fct": int(max_flow["src"]),
+            "dst_of_max_fct": int(max_flow["dst"])
         })
     return rows
 
