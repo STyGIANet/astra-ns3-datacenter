@@ -986,10 +986,26 @@ void setupOCS(json reconfigJson, NodeContainer n){
     if (demandAware)
     {
         NS_LOG_INFO("Found Demand-Aware reconfiguration setting \n");
-        // scheduler that dynamically decides if and which reconfiguration would be beneficial between each round of a collective
+
+        if (!reconfigJson.contains("reconfig_per_round"))
+        {
+            NS_FATAL_ERROR("Missing required field 'reconfig_per_round' in demand-aware reconfiguration JSON.");
+        }
+
+         // scheduler that reconfigures to direct connected halving Doubling pairs according to externally provided schedule
         AstraSim::reconfigSched& sched = AstraSim::reconfigSched::getScheduler();
         sched.setOCSNode(GetPointer(ocsNode)); // increases ref count on ocsNode, reconfigSched needs to decrement on exit
         sched.setDaMode(true); // ensures that collective algorithms coordinate with demand-aware scheduling, e.g. wait reconfigDelay ns between rounds when require     
+
+        std::vector<bool> reconfigVector;
+        for (const auto& val : reconfigJson["reconfig_per_round"])
+        {
+            //unsure how json library handles conversion to vector so iteration seems safer
+            reconfigVector.push_back(val.get<bool>());
+        }
+        sched.setReconfigDecisionPerRound(reconfigVector);
+        NS_LOG_INFO("Parsed reconfig_per_round with " << reconfigVector.size() << " entries.");
+
         // apply initial portmap from configs with timestamp 0 if it exists
         for (const auto& config : configs)
         {
