@@ -40,6 +40,7 @@ public:
 	static const uint32_t qCnt = 8;
 	static uint32_t ack_q_idx;
   static uint32_t stprio;
+  static uint32_t qpWindow;
 	int m_qlast;
 	uint32_t m_rrlast;
 	Ptr<DropTailQueuePacket> m_ackQ; // highest priority queue

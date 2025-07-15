@@ -53,6 +53,7 @@ namespace ns3 {
 
 	uint32_t RdmaEgressQueue::ack_q_idx = 3;
 	uint32_t RdmaEgressQueue::stprio = 0;
+	uint32_t RdmaEgressQueue::qpWindow = 1024;
 	// RdmaEgressQueue
 	TypeId RdmaEgressQueue::GetTypeId (void)
 	{
@@ -96,14 +97,14 @@ namespace ns3 {
 		bool found = false;
 		uint32_t qIndex;
 		if (GetFlowCount() > maxQps){
-			maxQps = GetFlowCount();
+			maxQps = GetFlowCount()>qpWindow? qpWindow : GetFlowCount();
 		}
 		if (!paused[ack_q_idx] && m_ackQ->GetNPackets() > 0)
 			return -1;
 
 		// no pkt in highest priority queue, do rr for each qp
 		int res = -1024;
-		uint32_t fcount = m_qpGrp->GetN();
+		uint32_t fcount = m_qpGrp->GetN() > qpWindow ? qpWindow : m_qpGrp->GetN();
 		uint32_t min_finish_id = 0xffffffff;
 		for (qIndex = 1; qIndex <= fcount; qIndex++){
 			uint32_t idx = (qIndex + m_rrlast) % fcount;
