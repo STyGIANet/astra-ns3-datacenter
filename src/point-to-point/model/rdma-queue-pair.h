@@ -56,13 +56,14 @@ class UniqueOrderedSet {
 };
 
 
-struct RepsEntry {
-    int cachedEV = -1;
-    bool isValid = false;
-};
 
 class RepsBuffer : public Object {
-private:
+public:	
+	struct RepsEntry {
+	    int cachedEV = -1;
+	    bool isValid = false;
+	};
+
     int REPS_BUFFER_SIZE = 64;
     int EVS_SIZE = 256;
     int NUM_PKTS_BDP = 10;
@@ -76,6 +77,12 @@ private:
     bool isFreezingMode = false;
     Time exitFreezingMode;
 
+    Ptr<UniformRandomVariable> m_rand;
+
+    RepsBuffer() : buffer(REPS_BUFFER_SIZE) {
+    	m_rand = CreateObject<UniformRandomVariable>();
+    }
+
     int randEV() {
         return rand() % EVS_SIZE;
     }
@@ -84,15 +91,9 @@ private:
         return numberValidEVs == 0;
     }
 
-    Ptr<UniformRandomVariable> m_rand;
-
-public:
-    RepsBuffer() : buffer(REPS_BUFFER_SIZE) {
-    	m_rand = CreateObject<UniformRandomVariable>();
-    }
-
     void setRepsBufferSize(int size){
     	REPS_BUFFER_SIZE = size;
+    	buffer.resize(REPS_BUFFER_SIZE);
     }
     void setRepsEvSize(int size){
     	EVS_SIZE = size;
