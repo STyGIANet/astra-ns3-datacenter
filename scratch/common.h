@@ -103,6 +103,7 @@ uint32_t allTors = 0;
 uint32_t source_routing = 0;
 uint32_t end_host_spray = 0;
 uint32_t reps = 0;
+uint32_t repsv4 = 0;
 uint64_t rto = 100*1000; // 100 micro seconds by default
 uint64_t multipath_rto = 100*1000;
 
@@ -810,6 +811,10 @@ ReadConf(string network_configuration)
         {
             conf >> reps;
         }
+        else if (key.compare("REPSv4")==0)
+        {
+            conf >> repsv4;
+        }
         else if (key.compare("RTO")==0)
         {
             conf >> rto;
@@ -911,10 +916,11 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             n.Add(sw);
             sw->SetAttribute("EcnEnabled", BooleanValue(enable_qcn));
             // STyGIANet
-            NS_ASSERT_MSG(source_routing+end_host_spray+reps <= 1, "source_routing, end_host_spray, and reps cannot be set at the same time");
+            NS_ASSERT_MSG(source_routing+end_host_spray+reps+repsv4 <= 1, "source_routing, end_host_spray, and reps cannot be set at the same time");
             sw->SetAttribute("sourceRouting", BooleanValue(source_routing==1));
             sw->SetAttribute("endHostSpray", BooleanValue(end_host_spray==1));
             sw->SetAttribute("reps", BooleanValue(reps==1));
+            sw->SetAttribute("reps",BooleanValue(repsv4==1));
         }
     }
 
@@ -1119,11 +1125,12 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             
             // STyGIANet
             // set routing mode. Default is ecmp.
-            NS_ASSERT_MSG(source_routing+end_host_spray+reps <= 1, "source_routing, end_host_spray, and reps cannot be set at the same time");
+            NS_ASSERT_MSG(source_routing+end_host_spray+reps+repsv4 <= 1, "source_routing, end_host_spray, and reps cannot be set at the same time");
             rdmaHw->SetAttribute("sourceRouting", BooleanValue(source_routing==1));
             rdmaHw->SetAttribute("endHostSpray", BooleanValue(end_host_spray==1));
             rdmaHw->SetAttribute("reps", BooleanValue(reps==1));
-            if (reps==1)
+            rdmaHw->SetAttribute("repsv4", BooleanValue(repsv4==1));
+            if (reps==1 || repsv4==1)
                 rdmaHw->SetAttribute("rto", UintegerValue(multipath_rto));
             else
                 rdmaHw->SetAttribute("rto", UintegerValue(rto));

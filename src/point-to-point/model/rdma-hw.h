@@ -167,6 +167,7 @@ public:
 	bool m_sourceRouting;
 	bool m_endHostSpray;
 	bool m_reps;
+	bool m_repsv4;
 	uint64_t rto;
 	Ptr<UniformRandomVariable> m_rand;
 

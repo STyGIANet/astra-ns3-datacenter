@@ -194,6 +194,11 @@ TypeId RdmaHw::GetTypeId (void)
 			BooleanValue(false),
 			MakeBooleanAccessor(&RdmaHw::m_reps),
 			MakeBooleanChecker())
+		.AddAttribute("repsv4",
+			"use repsv4 load balancing",
+			BooleanValue(false),
+			MakeBooleanAccessor(&RdmaHw::m_repsv4),
+			MakeBooleanChecker())
 		.AddAttribute("rto","retransmission timeout",
 			UintegerValue(100000), 
 			MakeUintegerAccessor(&RdmaHw::rto), 
@@ -296,6 +301,13 @@ void RdmaHw::AddQueuePair(uint32_t src, uint32_t dest, uint64_t tag, uint64_t si
 	}
 
 	qp->m_ipid = m_rand->GetInteger(0, qp->maxEntropies);
+
+	// reps
+	double bdp = m_bps.GetBitRate() * 1 * (qp->m_baseRtt * 1e-9) / 8;
+	qp->repsBuffer.setRepsBufferSize(256);
+	qp->repsBuffer.setRepsEvSize(256);
+	qp->repsBuffer.setNumPktsBdp(int(bdp/m_mtu));
+	qp->repsBuffer.setFreezingTimeoutMs(100);
 
 	// Notify Nic
 	m_nic[nic_idx].dev->NewQp(qp);
@@ -434,6 +446,13 @@ int RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader &ch){
 			uint32_t entropy = ihh.GetIdentification();
 			head.SetIdentification(entropy);
 		}
+		else if (m_repsv4){
+			Ptr<Packet> cp = p->Copy();
+			PppHeader ppph; cp->RemoveHeader(ppph);
+			Ipv4Header ihh; cp->RemoveHeader(ihh);
+			uint32_t entropy = ihh.GetIdentification();
+			head.SetIdentification(entropy);
+		}
 		else if (m_endHostSpray){
 			head.SetIdentification(rxQp->m_ipid++);
 		}
@@ -520,7 +539,7 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 		std::cout << "ERROR: shouldn't receive ack\n";
 	else {
 		if (!m_backto0){
-			if (m_reps || m_endHostSpray){
+			if (m_reps || m_repsv4 || m_endHostSpray){
 				auto itThisPkt = qp->pktsInflight.find(seq);
 				if (itThisPkt != qp->pktsInflight.end()){
 					std::get<1>(itThisPkt->second) = true; // just indicate that the packet has been ACKed
@@ -577,6 +596,14 @@ int RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader &ch){
 		}
 	}
 
+	if (m_repsv4){
+		Ptr<Packet> cp = p->Copy();
+		PppHeader ppph; cp->RemoveHeader(ppph);
+		Ipv4Header ihh; cp->RemoveHeader(ihh);
+		uint32_t entropy = ihh.GetIdentification();
+		qp->repsBuffer.onAck(entropy, cnp);
+	}
+
 	if (m_cc_mode == 3){
 		HandleAckHp(qp, p, ch);
 	}else if (m_cc_mode == 7){
@@ -618,7 +645,7 @@ int RdmaHw::Receive(Ptr<Packet> p, CustomHeader &ch){
 
 int RdmaHw::ReceiverCheckSeq(uint32_t seq, Ptr<RdmaRxQueuePair> q, uint32_t size){
 
-	if (m_reps || m_endHostSpray){
+	if (m_reps || m_repsv4 || m_endHostSpray){
 		// Important: Sender expects per packet acknowledgment i.e., expects acknowledgment for EACH seq num.
 		// No Nacks currently. Due to multipath, they rely on per-packet timers at the sender for retransmissions.
 
@@ -863,6 +890,10 @@ Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
 			ipHeader.SetIdentification(qp->cachedEntropy.Get());
 		}
 	}
+	else if (m_repsv4){
+		uint32_t ev = qp->repsBuffer.onSend();
+		ipHeader.SetIdentification(ev);
+	}
 	else{
 		ipHeader.SetIdentification (qp->m_ipid);
 	}
@@ -878,7 +909,7 @@ Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
 	qp->m_ipid++;
 
 	// STyGIANet
-	if (m_reps || m_endHostSpray){
+	if (m_reps || m_repsv4 || m_endHostSpray){
 		if (!retransmit){
 			EventId timeoutEvent = Simulator::Schedule(NanoSeconds(rto), &RdmaHw::RetransmitPacket, this, qp, seqNum + payload_size);
 			qp->pktsInflight[seqNum + payload_size] = std::make_tuple(payload_size,false, timeoutEvent, 1);
@@ -904,7 +935,7 @@ Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
 
 // STyGIANet
 void RdmaHw::RetransmitPacket(Ptr<RdmaQueuePair> qp, uint32_t expectedAckSeq){
-	if (m_reps || m_endHostSpray){
+	if (m_reps || m_repsv4 || m_endHostSpray){
 		// std::cout << "retransmit" << std::endl;
 		// expectedAckSeq - payloadsize gives the sequence number from the sender perspective.
 		uint32_t payload_size = std::get<0>(qp->pktsInflight[expectedAckSeq]);
@@ -918,6 +949,9 @@ void RdmaHw::RetransmitPacket(Ptr<RdmaQueuePair> qp, uint32_t expectedAckSeq){
 			// Time occured.
 			// Remove the oldest cached entropy
 			qp->cachedEntropy.Remove();
+		}
+		if (m_repsv4){
+			qp->repsBuffer.onFailureDetection();
 		}
 		// Allow retransmission in case this QP is dead currently.
 		ChangeRate(qp, qp->m_max_rate);

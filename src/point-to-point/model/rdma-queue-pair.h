@@ -11,6 +11,10 @@
 #include <vector>
 #include <deque>
 #include <unordered_set>
+#include "ns3/random-variable-stream.h"
+#include <ns3/simulator.h>
+#include "ns3/uinteger.h"
+#include "ns3/double.h"
 //vamsi
 #include <map>
 
@@ -33,7 +37,7 @@ class UniqueOrderedSet {
     }
 
     int Get(){
-    	return elements.empty() ? -1 : elements.front();
+    	int val = elements.empty() ? -1 : elements.front();
     }
 
     void Remove() {
@@ -50,6 +54,109 @@ class UniqueOrderedSet {
     	return std::vector<int>(elements.begin(), elements.end());
 	}
 };
+
+
+struct RepsEntry {
+    int cachedEV = -1;
+    bool isValid = false;
+};
+
+class RepsBuffer : public Object {
+private:
+    int REPS_BUFFER_SIZE = 64;
+    int EVS_SIZE = 256;
+    int NUM_PKTS_BDP = 10;
+    int FREEZING_TIMEOUT_MS = 100;
+
+    std::vector<RepsEntry> buffer;
+    int head = 0;
+    int numberValidEVs = 0;
+    int exploreCounter = 0;
+
+    bool isFreezingMode = false;
+    Time exitFreezingMode;
+
+    int randEV() {
+        return rand() % EVS_SIZE;
+    }
+
+    bool bufferEmpty() const {
+        return numberValidEVs == 0;
+    }
+
+    Ptr<UniformRandomVariable> m_rand;
+
+public:
+    RepsBuffer() : buffer(REPS_BUFFER_SIZE) {
+    	m_rand = CreateObject<UniformRandomVariable>();
+    }
+
+    void setRepsBufferSize(int size){
+    	REPS_BUFFER_SIZE = size;
+    }
+    void setRepsEvSize(int size){
+    	EVS_SIZE = size;
+    	m_rand->SetAttribute("Min", DoubleValue(0));
+    	m_rand->SetAttribute("Max", DoubleValue(EVS_SIZE - 1));
+	}
+	void setNumPktsBdp(int size){
+		NUM_PKTS_BDP = size;
+	}
+
+	void setFreezingTimeoutMs(int timeout){
+		FREEZING_TIMEOUT_MS = timeout;
+	}
+
+    void onAck(int ev, bool ecnSet) {
+        if (ecnSet) return;
+
+        if (!buffer[head].isValid) {
+            numberValidEVs++;
+        }
+
+        buffer[head].cachedEV = ev;
+        buffer[head].isValid = true;
+        head = (head + 1) % REPS_BUFFER_SIZE;
+
+        if (isFreezingMode && Simulator::Now() > exitFreezingMode) {
+            isFreezingMode = false;
+            exploreCounter = NUM_PKTS_BDP;
+        }
+    }
+
+    void onFailureDetection() {
+        if (!isFreezingMode && exploreCounter == 0) {
+            isFreezingMode = true;
+            exitFreezingMode = Simulator::Now() + MilliSeconds(FREEZING_TIMEOUT_MS);
+        }
+    }
+
+    int getNextEntropy() {
+        int offset;
+        if (numberValidEVs > 0) {
+            offset = (head - numberValidEVs + REPS_BUFFER_SIZE) % REPS_BUFFER_SIZE;
+            buffer[offset].isValid = false;
+            numberValidEVs--;
+        } else {
+            // freezing mode
+            offset = head;
+            head = (head + 1) % REPS_BUFFER_SIZE;
+        }
+        return buffer[offset].cachedEV;
+    }
+
+    int onSend() {
+        if (bufferEmpty() || (numberValidEVs == 0 && !isFreezingMode) || exploreCounter > 0) {
+            int ev = randEV();
+            exploreCounter = std::max(exploreCounter - 1, 0);
+            return ev;
+        } else {
+            return getNextEntropy();
+        }
+    }
+};
+
+
 
 class RdmaQueuePair : public Object {
 public:
@@ -74,12 +181,16 @@ public:
 
 	// STyGIANet
 
-	//reps
+	//reps-sp
 	uint32_t nextEntropy;
 	uint32_t maxEntropies;
 	bool allentropiesTried;
 	UniqueOrderedSet cachedEntropy;
 	uint32_t maxQps = 0;
+
+	//reps
+	RepsBuffer repsBuffer;
+
 
 	uint32_t pathId;
 
