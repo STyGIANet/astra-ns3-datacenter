@@ -102,6 +102,7 @@ public:
 	}
 	void setNumPktsBdp(int size){
 		NUM_PKTS_BDP = size;
+		exploreCounter = NUM_PKTS_BDP;
 	}
 
 	void setFreezingTimeoutMs(int timeout){
