@@ -941,10 +941,22 @@ void RdmaHw::RetransmitPacket(Ptr<RdmaQueuePair> qp, uint32_t expectedAckSeq){
 		uint32_t payload_size = std::get<0>(qp->pktsInflight[expectedAckSeq]);
 		std::get<2>(qp->pktsInflight[expectedAckSeq]).Remove();
 		uint32_t seqNum = expectedAckSeq - payload_size;
-		qp->retransmitQueue.push_back(std::make_pair(seqNum, payload_size)); // we don't care if the same packet exists in the retransmit queue already
+		// qp->retransmitQueue.push_back(std::make_pair(seqNum, payload_size)); // we don't care if the same packet exists in the retransmit queue already. Realization: This was a BAD idea.
 		// std::cout << "Retransmit " << " node " << m_node->GetId() << " srcIp " << qp->sip.Get()
 					// << " dstIp " << qp->dip.Get() << " srcPort " << qp->sport << " dstPort " <<  qp->dport << std::endl;
 
+		auto it = std::find_if(qp->retransmitQueue.begin(), qp->retransmitQueue.end(),
+                       [seqNum](const auto& entry) {
+                           return entry.first == seqNum;
+                       });
+
+		if (it == qp->retransmitQueue.end()) {
+		    // seqNum not found, safe to insert
+		    qp->retransmitQueue.push_back(std::make_pair(seqNum, payload_size));
+		} else {
+		    // seqNum already exists
+		}
+		
 		if (m_reps){
 			// Time occured.
 			// Remove the oldest cached entropy
@@ -954,7 +966,7 @@ void RdmaHw::RetransmitPacket(Ptr<RdmaQueuePair> qp, uint32_t expectedAckSeq){
 			qp->repsBuffer.onFailureDetection();
 		}
 		// Allow retransmission in case this QP is dead currently.
-		ChangeRate(qp, qp->m_max_rate);
+		// ChangeRate(qp, qp->m_max_rate);
 		uint32_t nic_idx = GetNicIdxOfQp(qp);
 		m_nic[nic_idx].dev->TriggerTransmit();
 	}
