@@ -39,6 +39,7 @@ protected:
 	bool m_endHostSpray;
 	bool m_reps;
 	bool m_switchSpray;
+	bool m_optical;
 
 private:
 	int GetOutDev(Ptr<Packet>, CustomHeader &ch);

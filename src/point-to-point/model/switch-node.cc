@@ -11,6 +11,9 @@
 #include "ppp-header.h"
 #include "ns3/simulator.h"
 #include "ns3/int-header.h"
+#include "ns3/routing-tag.h"
+
+
 #include <cmath>
 
 namespace ns3 {
@@ -60,6 +63,11 @@ TypeId SwitchNode::GetTypeId (void)
 			BooleanValue(false),
 			MakeBooleanAccessor(&SwitchNode::m_reps),
 			MakeBooleanChecker())
+	.AddAttribute("optical",
+			"use optical interconnect",
+			BooleanValue(false),
+			MakeBooleanAccessor(&SwitchNode::m_optical),
+			MakeBooleanChecker())
   ;
   return tid;
 }
@@ -81,53 +89,82 @@ SwitchNode::SwitchNode(){
 }
 
 int SwitchNode::GetOutDev(Ptr<Packet> p, CustomHeader &ch){
-	// look up entries
-	auto entry = m_rtTable.find(ch.dip);
+	if (!m_optical) {
+		// look up entries
+		auto entry = m_rtTable.find(ch.dip);
 
-	// no matching entry
-	if (entry == m_rtTable.end())
-		return -1;
+		// no matching entry
+		if (entry == m_rtTable.end())
+			return -1;
 
-	// entry found
-	auto &nexthops = entry->second;
+		// entry found
+		auto &nexthops = entry->second;
 
-	// pick one next hop based on hash
-	union {
-		uint8_t u8[4+4+2+2];
-		uint32_t u32[3];
-	} buf;
-	buf.u32[0] = ch.sip;
-	buf.u32[1] = ch.dip;
-	if (ch.l3Prot == 0x6)
-		buf.u32[2] = ch.tcp.sport | ((uint32_t)ch.tcp.dport << 16);
-	else if (ch.l3Prot == 0x11)
-		buf.u32[2] = ch.udp.sport | ((uint32_t)ch.udp.dport << 16);
-	else if (ch.l3Prot == 0xFC || ch.l3Prot == 0xFD)
-		buf.u32[2] = ch.ack.sport | ((uint32_t)ch.ack.dport << 16);
+		// pick one next hop based on hash
+		union {
+			uint8_t u8[4+4+2+2];
+			uint32_t u32[3];
+		} buf;
+		buf.u32[0] = ch.sip;
+		buf.u32[1] = ch.dip;
+		if (ch.l3Prot == 0x6)
+			buf.u32[2] = ch.tcp.sport | ((uint32_t)ch.tcp.dport << 16);
+		else if (ch.l3Prot == 0x11)
+			buf.u32[2] = ch.udp.sport | ((uint32_t)ch.udp.dport << 16);
+		else if (ch.l3Prot == 0xFC || ch.l3Prot == 0xFD)
+			buf.u32[2] = ch.ack.sport | ((uint32_t)ch.ack.dport << 16);
 
-	uint32_t idx = EcmpHash(buf.u8, 12, m_ecmpSeed);
-	// STyGIANet
-	if (m_sourceRouting){
-		// if (ch.l3Prot == 0x11) {
-			// For data packets
-			PppHeader ppp;
-			Ipv4Header ih;
-			p->RemoveHeader(ppp);
-			p->RemoveHeader(ih);
-			uint16_t path = ih.GetIdentification() & 0x00FF;
-			if (path < nexthops.size()){ // else fall back to ECMP
-				idx = path;
-			}
-			// First hop will use the first 16 bits.
-			// Second hop will use the next 16 bits.
-			// We assume max 3-tier topology. So, the downward path is unique anyway.
-			// uint16_t mask = 0xFF00;
-			path = ((uint16_t)(ih.GetIdentification()) >> 8) | ((uint16_t)(ih.GetIdentification()) << 8);
-			ih.SetIdentification(path);
-			p->AddHeader(ih);
-			p->AddHeader(ppp);
-	}
-	else if (m_endHostSpray){
+		uint32_t idx = EcmpHash(buf.u8, 12, m_ecmpSeed);
+		// STyGIANet
+		if (m_sourceRouting){
+			// if (ch.l3Prot == 0x11) {
+				// For data packets
+				PppHeader ppp;
+				Ipv4Header ih;
+				p->RemoveHeader(ppp);
+				p->RemoveHeader(ih);
+				uint16_t path = ih.GetIdentification() & 0x00FF;
+				if (path < nexthops.size()){ // else fall back to ECMP
+					idx = path;
+				}
+				// First hop will use the first 16 bits.
+				// Second hop will use the next 16 bits.
+				// We assume max 3-tier topology. So, the downward path is unique anyway.
+				// uint16_t mask = 0xFF00;
+				path = ((uint16_t)(ih.GetIdentification()) >> 8) | ((uint16_t)(ih.GetIdentification()) << 8);
+				ih.SetIdentification(path);
+				p->AddHeader(ih);
+				p->AddHeader(ppp);
+		}
+		else if (m_endHostSpray){
+				PppHeader ppp;
+				Ipv4Header ih;
+				p->RemoveHeader(ppp);
+				p->RemoveHeader(ih);
+				// Use this entropy for one of the 5-tuple values
+				uint32_t entropy = ih.GetIdentification();
+				union {
+					uint8_t u8[4 + 4 + 2 + 2];
+					uint32_t u32[3];
+				} buf;
+				buf.u32[0] = ch.sip;
+				buf.u32[1] = ch.dip;
+				if (ch.l3Prot == 0x6)
+					buf.u32[2] = ch.tcp.sport | ((uint32_t)ch.tcp.dport << 16);
+				else if (ch.l3Prot == 0x11)
+					buf.u32[2] = entropy | ((uint32_t)ch.udp.dport << 16);
+				else if (ch.l3Prot == 0xFC || ch.l3Prot == 0xFD)
+					buf.u32[2] = entropy | ((uint32_t)ch.ack.dport << 16);
+
+				p->AddHeader(ih);
+				p->AddHeader(ppp);
+
+				idx = EcmpHash(buf.u8, 12, m_ecmpSeed);
+		}
+		else if (m_switchSpray){
+				idx = (rrspray++)%nexthops.size(); // <-- this one
+		}
+		else if (m_reps){
 			PppHeader ppp;
 			Ipv4Header ih;
 			p->RemoveHeader(ppp);
@@ -151,55 +188,35 @@ int SwitchNode::GetOutDev(Ptr<Packet> p, CustomHeader &ch){
 			p->AddHeader(ppp);
 
 			idx = EcmpHash(buf.u8, 12, m_ecmpSeed);
+		} else if (m_optical) {
+			idx = (rrspray++)%nexthops.size(); // <-- this one
+		}
+		// STyGIANet
+		// This mimicks resilient hashing but only works for a single failed port at the moment.
+		if (std::find(failedIntfs.begin(), failedIntfs.end(), nexthops[idx % nexthops.size()]) != failedIntfs.end()){
+			auto entryAfterFailure = m_rtTableFailure.find(ch.dip);
+
+			// After a link failure event, we will not reset the default routing table.
+			// Flow hashes will still be indexed based on the default routing table.
+			// Only upon hitting a failed port, we will look up the flow in the failure routing table.
+			// Typically, switches take upto 100ms to update the routing table.
+			// A routing entry for failed path appears in the failure routing table after 100ms.
+			// Until then, the switch drops all the packets.
+			if (entryAfterFailure == m_rtTableFailure.end())
+				return -1;
+
+			auto &nexthopsAfterFailure = entryAfterFailure->second;
+
+			return nexthopsAfterFailure[idx % nexthopsAfterFailure.size()];
+		}
+
+		return nexthops[idx % nexthops.size()];
+	} else {
+		// read the tag from the packet copy
+		RoutingTag tagCopy;
+		bool tagFound = p->PeekPacketTag(tagCopy);
+		return tagCopy.GetNextHopPortId();
 	}
-	else if (m_switchSpray){
-			idx = (rrspray++)%nexthops.size();
-	}
-	else if (m_reps){
-		PppHeader ppp;
-		Ipv4Header ih;
-		p->RemoveHeader(ppp);
-		p->RemoveHeader(ih);
-		// Use this entropy for one of the 5-tuple values
-		uint32_t entropy = ih.GetIdentification();
-		union {
-			uint8_t u8[4 + 4 + 2 + 2];
-			uint32_t u32[3];
-		} buf;
-		buf.u32[0] = ch.sip;
-		buf.u32[1] = ch.dip;
-		if (ch.l3Prot == 0x6)
-			buf.u32[2] = ch.tcp.sport | ((uint32_t)ch.tcp.dport << 16);
-		else if (ch.l3Prot == 0x11)
-			buf.u32[2] = entropy | ((uint32_t)ch.udp.dport << 16);
-		else if (ch.l3Prot == 0xFC || ch.l3Prot == 0xFD)
-			buf.u32[2] = entropy | ((uint32_t)ch.ack.dport << 16);
-
-		p->AddHeader(ih);
-		p->AddHeader(ppp);
-
-		idx = EcmpHash(buf.u8, 12, m_ecmpSeed);
-	}
-	// STyGIANet
-	// This mimicks resilient hashing but only works for a single failed port at the moment.
-	if (std::find(failedIntfs.begin(), failedIntfs.end(), nexthops[idx % nexthops.size()]) != failedIntfs.end()){
-		auto entryAfterFailure = m_rtTableFailure.find(ch.dip);
-
-		// After a link failure event, we will not reset the default routing table.
-		// Flow hashes will still be indexed based on the default routing table.
-		// Only upon hitting a failed port, we will look up the flow in the failure routing table.
-		// Typically, switches take upto 100ms to update the routing table.
-		// A routing entry for failed path appears in the failure routing table after 100ms.
-		// Until then, the switch drops all the packets.
-		if (entryAfterFailure == m_rtTableFailure.end())
-			return -1;
-
-		auto &nexthopsAfterFailure = entryAfterFailure->second;
-
-		return nexthopsAfterFailure[idx % nexthopsAfterFailure.size()];
-	}
-
-	return nexthops[idx % nexthops.size()];
 }
 
 void SwitchNode::CheckAndSendPfc(uint32_t inDev, uint32_t qIndex){

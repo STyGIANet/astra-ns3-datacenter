@@ -15,6 +15,8 @@ if(${ENABLE_MPI})
   )
 endif()
 
+include_directories("../scratch")
+
 build_lib(
   LIBNAME point-to-point
   SOURCE_FILES

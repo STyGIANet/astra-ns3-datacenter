@@ -42,6 +42,7 @@ set(source_files
     utils/ethernet-header.cc
     utils/ethernet-trailer.cc
     utils/flow-id-tag.cc
+    utils/routing-tag.cc
     utils/inet-socket-address.cc
     utils/inet6-socket-address.cc
     utils/int-header.cc
@@ -122,6 +123,7 @@ set(header_files
     utils/ethernet-header.h
     utils/ethernet-trailer.h
     utils/flow-id-tag.h
+    utils/routing-tag.h
     utils/generic-phy.h
     utils/inet-socket-address.h
     utils/inet6-socket-address.h

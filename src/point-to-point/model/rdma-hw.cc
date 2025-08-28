@@ -12,6 +12,7 @@
 #include "ppp-header.h"
 #include "qbb-header.h"
 #include "cn-header.h"
+#include "ns3/routing-tag.h"
 
 namespace ns3{
 
@@ -199,6 +200,11 @@ TypeId RdmaHw::GetTypeId (void)
 			BooleanValue(false),
 			MakeBooleanAccessor(&RdmaHw::m_repsv4),
 			MakeBooleanChecker())
+		.AddAttribute("optical",
+			"use optical routing",
+			BooleanValue(false),
+			MakeBooleanAccessor(&RdmaHw::m_optical),
+			MakeBooleanChecker())
 		.AddAttribute("rto","retransmission timeout",
 			UintegerValue(100000), 
 			MakeUintegerAccessor(&RdmaHw::rto), 
@@ -250,6 +256,10 @@ uint32_t RdmaHw::GetNicIdxOfQp(Ptr<RdmaQueuePair> qp){
 	}else{
 		NS_ASSERT_MSG(false, "We assume at least one NIC is alive");
 	}
+	// Assume that you always have two NICs
+	// if (optical){
+	// 	return 1;
+	// }
 }
 uint64_t RdmaHw::GetQpKey(uint32_t dip, uint16_t sport, uint16_t pg){
 	return ((uint64_t)dip << 32) | ((uint64_t)sport << 16) | (uint64_t)pg;
@@ -463,6 +473,9 @@ int RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader &ch){
 			uint32_t entropy = ((uint16_t)(ihh.GetIdentification()) >> 8) | ((uint16_t)(ihh.GetIdentification()) << 8);
 			// uint32_t entropy = ihh.GetIdentification();
 			head.SetIdentification(entropy);
+		}
+		else if (m_optical) {
+			head.SetIdentification(rxQp->m_ipid++);
 		}
 		else{
 			head.SetIdentification(rxQp->m_ipid++);
@@ -894,8 +907,21 @@ Ptr<Packet> RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp){
 		uint32_t ev = qp->repsBuffer.onSend();
 		ipHeader.SetIdentification(ev);
 	}
+	else if (m_optical) {
+		ipHeader.SetIdentification(qp->m_ipid);
+		// RoutingTag copyTag;
+		// if (p->PeekPacketTag(copyTag)) {
+		// 	uint32_t currentHopId = copyTag.GetNextHopPortId();
+		// 	copyTag.SetNextHopPortId(++currentHopId % n.GetN());
+		// } else {
+		// 	uint32_t sRank = ip_to_node_id(qp->sip);
+		// 	copyTag.SetNextHopPortId(++sRank % n.GetN());
+		// }
+		// p->AddPacketTag(copyTag);
+	}
 	else{
 		ipHeader.SetIdentification (qp->m_ipid);
+		
 	}
 	p->AddHeader(ipHeader);
 	// add ppp header

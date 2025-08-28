@@ -168,6 +168,7 @@ public:
 	bool m_endHostSpray;
 	bool m_reps;
 	bool m_repsv4;
+	bool m_optical;
 	uint64_t rto;
 	Ptr<UniformRandomVariable> m_rand;
 
