@@ -23,7 +23,14 @@
 
 namespace ns3
 {
-
+/**
+ *
+ * \brief Tag used to allow routing in an optical switch
+ *
+ * This tag is added by each source node when a packet is created,
+ * and it is then used to route the packet to the final destination
+ * node
+ */
 class RoutingTag : public Tag
 {
   public:
@@ -40,19 +47,41 @@ class RoutingTag : public Tag
     RoutingTag();
 
     /**
-     * Constructs a RoutingTag with the given next hop port id
+     * Constructs a RoutingTag
      *
+     * \param sid
+     * \param did
+     * \param nextHopPortId
+     */
+    RoutingTag(uint32_t sid, uint32_t did, uint32_t nextHopPortId);
+    /**
+     * Sets the source node id
      * \param id the next hop port id
      */
-    RoutingTag(uint32_t id);
+    void SetSrcId(uint32_t id);
+    /**
+     * Gets the destination node id
+     * \returns destination node id for this tag
+     */
+    uint32_t GetSrcId() const;
+    /**
+     * Sets the destination node id for the route
+     * \param id the destination node id
+     */
+    void SetDestId(uint32_t id);
+    /**
+     * Gets the destination node id
+     * \returns destination node id for this tag
+     */
+    uint32_t GetDestId() const;
     /**
      * Sets the next hop for the route
      * \param id the next hop port id
      */
     void SetNextHopPortId(uint32_t id);
     /**
-     * Gets the hop port id for the tag
-     * \returns current hop port id for this tag
+     * Gets the hop port id
+     * \returns current hop port id
      */
     uint32_t GetNextHopPortId() const;
     /**
@@ -63,6 +92,8 @@ class RoutingTag : public Tag
     // uint32_t AllocateNextHopId(uint32_t id);
 
   private:
+    uint32_t m_sid; //!< Id of the source node
+    uint32_t m_did; //!< Id of the destination node
     uint32_t m_nextHopPortId; //!< Id of the port to route the packet to
 };
 

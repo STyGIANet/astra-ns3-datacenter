@@ -188,8 +188,6 @@ int SwitchNode::GetOutDev(Ptr<Packet> p, CustomHeader &ch){
 			p->AddHeader(ppp);
 
 			idx = EcmpHash(buf.u8, 12, m_ecmpSeed);
-		} else if (m_optical) {
-			idx = (rrspray++)%nexthops.size(); // <-- this one
 		}
 		// STyGIANet
 		// This mimicks resilient hashing but only works for a single failed port at the moment.

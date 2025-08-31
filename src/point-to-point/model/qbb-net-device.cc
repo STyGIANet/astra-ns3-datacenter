@@ -220,6 +220,11 @@ namespace ns3 {
 					PointerValue (),
 					MakePointerAccessor (&QbbNetDevice::m_rdmaEQ),
 					MakePointerChecker<Object> ())
+			.AddAttribute ("nextHopNodeId",
+					"The node connected to this device",
+					UintegerValue (0),
+					MakeUintegerAccessor(&QbbNetDevice::nextHopNodeId),
+					MakeUintegerChecker<uint32_t>())
 			.AddTraceSource ("QbbEnqueue", "Enqueue a packet in the QbbNetDevice.",
 					MakeTraceSourceAccessor (&QbbNetDevice::m_traceEnqueue),
 					"ns3::Packet::TraceCallback")
@@ -367,7 +372,7 @@ namespace ns3 {
 	void
 		QbbNetDevice::Receive(Ptr<Packet> packet)
 	{
-		NS_LOG_FUNCTION(this << packet);
+		NS_LOG_FUNCTION(this << packet); // Make changes here
 		if (!m_linkUp){
 			m_traceDrop(packet, 0);
 			return;
@@ -403,7 +408,7 @@ namespace ns3 {
 				m_node->SwitchReceiveFromDevice(this, packet, ch);
 			}else { // NIC
 				// send to RdmaHw
-				int ret = m_rdmaReceiveCb(packet, ch);
+				int ret = m_rdmaReceiveCb(packet, ch); // dont directly send to hw check if it is destined for this node
 				// TODO we may based on the ret do something
 			}
 		}
@@ -443,6 +448,7 @@ namespace ns3 {
 		AddHeader(p, 0x800);
 		CustomHeader ch(CustomHeader::L2_Header | CustomHeader::L3_Header | CustomHeader::L4_Header);
 		p->PeekHeader(ch);
+		std::cout << "Weirdo flow approaching" << std::endl;
 		SwitchSend(0, p, ch);
 	}
 
@@ -577,5 +583,15 @@ namespace ns3 {
 			Time delta = t < Simulator::Now() ? Time(0) : t - Simulator::Now();
 			m_nextSend = Simulator::Schedule(delta, &QbbNetDevice::DequeueAndTransmit, this);
 		}
+	}
+
+	/**
+    * Next Hop Resources
+    */
+	uint32_t QbbNetDevice::GetNextHopNodeId(){
+		return nextHopNodeId;
+	}
+	void QbbNetDevice::SetNextHopNodeId(uint32_t id){
+		nextHopNodeId = id;
 	}
 } // namespace ns3

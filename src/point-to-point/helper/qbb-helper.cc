@@ -239,9 +239,11 @@ QbbHelper::Install (Ptr<Node> a, Ptr<Node> b)
 
   Ptr<QbbNetDevice> devA = m_deviceFactory.Create<QbbNetDevice> ();
   devA->SetAddress (Mac48Address::Allocate ());
+  devA->SetNextHopNodeId(b->GetId());
   a->AddDevice (devA);
   Ptr<QbbNetDevice> devB = m_deviceFactory.Create<QbbNetDevice> ();
   devB->SetAddress (Mac48Address::Allocate ());
+  devB->SetNextHopNodeId(a->GetId());
   b->AddDevice (devB);
 
   Ptr<BEgressQueue> queueA = CreateObject<BEgressQueue> ();

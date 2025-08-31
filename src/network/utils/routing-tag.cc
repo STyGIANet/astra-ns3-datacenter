@@ -47,13 +47,15 @@ uint32_t
 RoutingTag::GetSerializedSize() const
 {
     NS_LOG_FUNCTION(this);
-    return 4;
+    return 4 + 4 + 4;
 }
 
 void
 RoutingTag::Serialize(TagBuffer buf) const
 {
     NS_LOG_FUNCTION(this << &buf);
+    buf.WriteU32(m_sid);
+    buf.WriteU32(m_did);
     buf.WriteU32(m_nextHopPortId);
 }
 
@@ -61,6 +63,8 @@ void
 RoutingTag::Deserialize(TagBuffer buf)
 {
     NS_LOG_FUNCTION(this << &buf);
+    m_sid = buf.ReadU32();
+    m_did = buf.ReadU32();
     m_nextHopPortId = buf.ReadU32();
 }
 
@@ -68,6 +72,8 @@ void
 RoutingTag::Print(std::ostream& os) const
 {
     NS_LOG_FUNCTION(this << &os);
+    os << "SourceId=" << m_sid;
+    os << "DestinationId=" << m_did;
     os << "NextHopPortId=" << m_nextHopPortId;
 }
 
@@ -77,11 +83,40 @@ RoutingTag::RoutingTag()
     NS_LOG_FUNCTION(this);
 }
 
-RoutingTag::RoutingTag(uint32_t id)
+RoutingTag::RoutingTag(uint32_t sid, uint32_t did, uint32_t nextHopPortId)
     : Tag(),
-      m_nextHopPortId(id)
+      m_sid(sid),
+      m_did(did),
+      m_nextHopPortId(nextHopPortId)
+{
+}
+
+void
+RoutingTag::SetSrcId(uint32_t id)
 {
     NS_LOG_FUNCTION(this << id);
+    m_sid = id;
+}
+
+uint32_t
+RoutingTag::GetSrcId() const
+{
+    NS_LOG_FUNCTION(this);
+    return m_sid;
+}
+
+void
+RoutingTag::SetDestId(uint32_t id)
+{
+    NS_LOG_FUNCTION(this << id);
+    m_did = id;
+}
+
+uint32_t
+RoutingTag::GetDestId() const
+{
+    NS_LOG_FUNCTION(this);
+    return m_did;
 }
 
 void
@@ -97,12 +132,5 @@ RoutingTag::GetNextHopPortId() const
     NS_LOG_FUNCTION(this);
     return m_nextHopPortId;
 }
-
-// uint32_t
-// RoutingTag::AllocateNextHopId(uint32_t id)
-// {
-//     NS_LOG_FUNCTION(this << id);
-//     return ++id;
-// }
 
 } // namespace ns3

@@ -138,6 +138,13 @@ public:
 	TracedCallback<Ptr<const Packet>, uint32_t> m_traceDequeue;
 	TracedCallback<Ptr<const Packet>, uint32_t> m_traceDrop;
 	TracedCallback<uint32_t> m_tracePfc; // 0: resume, 1: pause
+
+  /**
+   * Next Hop Resources
+   */
+  uint32_t GetNextHopNodeId();
+  void SetNextHopNodeId(uint32_t id);
+
 protected:
 
 	//Ptr<Node> m_node;
@@ -209,6 +216,9 @@ public:
 	void UpdateNextAvail(Time t);
 
 	TracedCallback<Ptr<const Packet>, Ptr<RdmaQueuePair> > m_traceQpDequeue; // the trace for printing dequeue
+
+private:
+  uint32_t nextHopNodeId; 
 };
 
 } // namespace ns3
