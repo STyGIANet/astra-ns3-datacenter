@@ -592,6 +592,9 @@ RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader& ch)
             uint32_t srcId = copyTag.GetSrcId();
             copyTag.SetSrcId(copyTag.GetDestId());
             copyTag.SetDestId(srcId);
+            uint32_t nodeId = QbbNetDevice::GetNextHopNodeId(copyTag.GetSrcId());
+            uint32_t nextHopPortId = nodeId * 2;
+            copyTag.SetNextHopPortId(nextHopPortId);            
             newp->AddPacketTag(copyTag);
         }
         else
@@ -839,8 +842,7 @@ RdmaHw::Receive(Ptr<Packet> p, CustomHeader& ch)
         // if not destined, then transmit to switch on port 1 on this node
         // update routing tag to inform switch where to send next  routing tag should have porting num
         // of switch
-        uint32_t nic_idx = 1;
-        uint32_t nodeId = m_nic[nic_idx].dev->GetNextHopNodeId();
+        uint32_t nodeId = QbbNetDevice::GetNextHopNodeId(m_node->GetId());
         uint32_t nextHopPortId = nodeId * 2;
         copyTag.SetNextHopPortId(nextHopPortId);
         p->ReplacePacketTag(copyTag);
@@ -1165,33 +1167,18 @@ RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp)
     else if (m_optical)
     {
         ipHeader.SetIdentification(qp->m_ipid);
-        // RoutingTag copyTag;
-        // if (p->PeekPacketTag(copyTag)) {
-        // 	uint32_t currentHopId = copyTag.GetNextHopPortId();
-        // 	copyTag.SetNextHopPortId(++currentHopId % n.GetN());
-        // } else {
-        // 	uint32_t sRank = ip_to_node_id(qp->sip);
-        // 	copyTag.SetNextHopPortId(++sRank % n.GetN());
-        // }
-        // p->AddPacketTag(copyTag);
+        RoutingTag copyTag;
+        copyTag.SetSrcId(qp->m_src);
+        copyTag.SetDestId(qp->m_dest);
+        uint32_t nodeId = QbbNetDevice::GetNextHopNodeId(qp->m_src);
+        uint32_t nextHopPortId = nodeId * 2;
+        copyTag.SetNextHopPortId(nextHopPortId);
+        p->AddPacketTag(copyTag);
     }
     else
     {
         ipHeader.SetIdentification(qp->m_ipid);
     }
-    RoutingTag copyTag;
-    copyTag.SetSrcId(qp->m_src);
-    copyTag.SetDestId(qp->m_dest);
-    if (qp->m_dest > 7)
-        std::cout << "QPs m_dest: " << qp->m_dest << std::endl;
-    p->AddPacketTag(copyTag);
-    // 	uint32_t currentHopId = copyTag.GetNextHopPortId();
-    // 	copyTag.SetNextHopPortId(++currentHopId % n.GetN());
-    // } else {
-    // 	uint32_t sRank = ip_to_node_id(qp->sip);
-    // 	copyTag.SetNextHopPortId(++sRank % n.GetN());
-    // }
-    // p->AddPacketTag(copyTag);
 
     p->AddHeader(ipHeader);
     // add ppp header

@@ -46,6 +46,7 @@
 #include "ns3/seq-ts-header.h"
 #include "ns3/pointer.h"
 #include "ns3/custom-header.h"
+#include "ns3/optical-routing-helper.h"
 #include <iostream>
 NS_LOG_COMPONENT_DEFINE("QbbNetDevice");
 
@@ -220,11 +221,11 @@ namespace ns3 {
 					PointerValue (),
 					MakePointerAccessor (&QbbNetDevice::m_rdmaEQ),
 					MakePointerChecker<Object> ())
-			.AddAttribute ("nextHopNodeId",
-					"The node connected to this device",
-					UintegerValue (0),
-					MakeUintegerAccessor(&QbbNetDevice::nextHopNodeId),
-					MakeUintegerChecker<uint32_t>())
+			// .AddAttribute ("nextHopNodeId",
+			// 		"The node connected to this device",
+			// 		UintegerValue (0),
+			// 		MakeUintegerAccessor(&QbbNetDevice::nextHopNodeId),
+			// 		MakeUintegerChecker<uint32_t>())
 			.AddTraceSource ("QbbEnqueue", "Enqueue a packet in the QbbNetDevice.",
 					MakeTraceSourceAccessor (&QbbNetDevice::m_traceEnqueue),
 					"ns3::Packet::TraceCallback")
@@ -588,10 +589,14 @@ namespace ns3 {
 	/**
     * Next Hop Resources
     */
-	uint32_t QbbNetDevice::GetNextHopNodeId(){
-		return nextHopNodeId;
+	uint32_t QbbNetDevice::GetNextHopNodeId(int id){
+		if (ns3::OpticalRoutingHelper::next_hop_node_ids[id].size() < ns3::OpticalRoutingHelper::stepId) {
+			std::cout << "Number of steps defined in routing file insufficient" << std::endl;
+			exit(1);
+		}
+		return ns3::OpticalRoutingHelper::next_hop_node_ids[id][ns3::OpticalRoutingHelper::stepId];
 	}
-	void QbbNetDevice::SetNextHopNodeId(uint32_t id){
-		nextHopNodeId = id;
-	}
+	// void QbbNetDevice::SetNextHopNodeId(uint32_t id){
+	// 	nextHopNodeId = id;
+	// }
 } // namespace ns3
