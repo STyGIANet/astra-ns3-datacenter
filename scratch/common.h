@@ -804,6 +804,10 @@ ReadConf(string network_configuration)
         {
             conf >> source_routing;
         }
+        else if (key.compare("OPTICAL")==0)
+        {
+            conf >> optical;
+        }
         else if (key.compare("END_HOST_SPRAY")==0)
         {
             conf >> end_host_spray;

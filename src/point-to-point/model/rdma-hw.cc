@@ -592,8 +592,8 @@ RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader& ch)
             uint32_t srcId = copyTag.GetSrcId();
             copyTag.SetSrcId(copyTag.GetDestId());
             copyTag.SetDestId(srcId);
-            uint32_t nodeId = QbbNetDevice::GetNextHopNodeId(copyTag.GetSrcId());
-            uint32_t nextHopPortId = nodeId * 2;
+            uint32_t nodeId = QbbNetDevice::GetNextHopNodeId(copyTag.GetDestId());
+            uint32_t nextHopPortId = 1 + copyTag.GetDestId() * 2;  // todo: replace this logic with some pcie system...
             copyTag.SetNextHopPortId(nextHopPortId);            
             newp->AddPacketTag(copyTag);
         }
@@ -843,7 +843,7 @@ RdmaHw::Receive(Ptr<Packet> p, CustomHeader& ch)
         // update routing tag to inform switch where to send next  routing tag should have porting num
         // of switch
         uint32_t nodeId = QbbNetDevice::GetNextHopNodeId(m_node->GetId());
-        uint32_t nextHopPortId = nodeId * 2;
+        uint32_t nextHopPortId = nodeId * 2 + 1;
         copyTag.SetNextHopPortId(nextHopPortId);
         p->ReplacePacketTag(copyTag);
     }
@@ -1171,7 +1171,7 @@ RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp)
         copyTag.SetSrcId(qp->m_src);
         copyTag.SetDestId(qp->m_dest);
         uint32_t nodeId = QbbNetDevice::GetNextHopNodeId(qp->m_src);
-        uint32_t nextHopPortId = nodeId * 2;
+        uint32_t nextHopPortId = nodeId * 2 + 1;
         copyTag.SetNextHopPortId(nextHopPortId);
         p->AddPacketTag(copyTag);
     }
