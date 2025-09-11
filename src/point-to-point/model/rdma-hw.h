@@ -56,9 +56,10 @@ public:
 	uint32_t GetNicIdxOfQp(Ptr<RdmaQueuePair> qp); // get the NIC index of the qp
 	void AddQueuePair(uint32_t src, uint32_t dest, uint64_t tag, uint64_t size, uint16_t pg, Ipv4Address _sip, Ipv4Address _dip, uint16_t _sport, uint16_t _dport, uint32_t win, uint64_t baseRtt, Callback<void> notifyAppFinish, Callback<void> notifyAppSent); // add a new qp (new send)
 	void DeleteQueuePair(Ptr<RdmaQueuePair> qp);
-
+	
 	Ptr<RdmaRxQueuePair> GetRxQp(uint32_t sip, uint32_t dip, uint16_t sport, uint16_t dport, uint16_t pg, bool create); // get a rxQp
 	uint32_t GetNicIdxOfRxQp(Ptr<RdmaRxQueuePair> q); // get the NIC index of the rxQp
+	uint32_t GetNicIdxForAck(Ptr<RdmaRxQueuePair> qp); // get the NIC index to send out for acks in optical
 	void DeleteRxQp(uint32_t dip, uint16_t pg, uint16_t dport);
 
 	int ReceiveUdp(Ptr<Packet> p, CustomHeader &ch);

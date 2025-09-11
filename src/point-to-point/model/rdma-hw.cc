@@ -443,6 +443,12 @@ RdmaHw::GetNicIdxOfRxQp(Ptr<RdmaRxQueuePair> q)
     }
 }
 
+uint32_t
+RdmaHw::GetNicIdxForAck(Ptr<RdmaRxQueuePair> qp)
+{
+    return 3;
+}
+
 void
 RdmaHw::DeleteRxQp(uint32_t dip, uint16_t pg, uint16_t dport)
 {
@@ -493,7 +499,10 @@ RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader& ch)
     // TODO find corresponding rx queue pair
     Ptr<RdmaRxQueuePair> rxQp =
         GetRxQp(ch.dip, ch.sip, ch.udp.dport, ch.udp.sport, ch.udp.pg, true);
-    uint32_t nic_id = GetNicIdxOfRxQp(rxQp);
+    uint32_t nic_id = GetNicIdxOfRxQp(rxQp); 
+    if (m_optical) {
+        nic_id = GetNicIdxForAck(rxQp);
+    }
     if (enable_pcie_pause)
     { //&& ((m_node->GetId())%16 == 0 || (m_node->GetId())%16 == 8)) { //&&
       //Simulator::Now().GetMicroSeconds() > m_node->GetId(4)
@@ -593,7 +602,7 @@ RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader& ch)
             copyTag.SetSrcId(copyTag.GetDestId());
             copyTag.SetDestId(srcId);
             uint32_t nodeId = QbbNetDevice::GetNextHopNodeId(copyTag.GetSrcId());
-            uint32_t nextHopPortId = nodeId * 2;
+            uint32_t nextHopPortId = nodeId * 2 + 2;
             copyTag.SetNextHopPortId(nextHopPortId);            
             newp->AddPacketTag(copyTag);
         }
@@ -606,6 +615,9 @@ RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader& ch)
         AddHeader(newp, 0x800); // Attach PPP header
 
         uint32_t nic_idx = GetNicIdxOfRxQp(rxQp);
+        if (m_optical) {
+            nic_idx = GetNicIdxForAck(rxQp);
+        }
         m_nic[nic_idx].dev->RdmaEnqueueHighPrioQ(newp);
         m_nic[nic_idx].dev->TriggerTransmit();
     }
@@ -843,7 +855,7 @@ RdmaHw::Receive(Ptr<Packet> p, CustomHeader& ch)
         // update routing tag to inform switch where to send next  routing tag should have porting num
         // of switch
         uint32_t nodeId = QbbNetDevice::GetNextHopNodeId(m_node->GetId());
-        uint32_t nextHopPortId = nodeId * 2;
+        uint32_t nextHopPortId = nodeId * 4;
         copyTag.SetNextHopPortId(nextHopPortId);
         p->ReplacePacketTag(copyTag);
     }
@@ -1171,7 +1183,7 @@ RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp)
         copyTag.SetSrcId(qp->m_src);
         copyTag.SetDestId(qp->m_dest);
         uint32_t nodeId = QbbNetDevice::GetNextHopNodeId(qp->m_src);
-        uint32_t nextHopPortId = nodeId * 2;
+        uint32_t nextHopPortId = nodeId * 4;
         copyTag.SetNextHopPortId(nextHopPortId);
         p->AddPacketTag(copyTag);
     }
