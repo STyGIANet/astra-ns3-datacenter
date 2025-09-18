@@ -267,19 +267,47 @@ RdmaHw::Setup(QpCompleteCallback cb)
 uint32_t
 RdmaHw::GetNicIdxOfQp(Ptr<RdmaQueuePair> qp)
 {
-    if (!m_optical) {
-        auto& v = m_rtTable[qp->dip.Get()];
-        if (v.size() > 0)
-        {
-            return v[qp->GetHash() % v.size()];
-        }
-        else
-        {
-            NS_ASSERT_MSG(false, "We assume at least one NIC is alive");
-        }
+    auto& v = m_rtTable[qp->dip.Get()];
+    if (v.size() > 0)
+    {
+        return v[qp->GetHash() % v.size()];
     }
-    else {
-        return 1;
+    else
+    {
+        NS_ASSERT_MSG(false, "We assume at least one NIC is alive");
+    }
+}
+
+/**
+ * @brief Get the Network Interface Card (NIC) index associated with a specific Queue Pair (QP).
+ *
+ * @param receive A boolean indicating whether the receive interface is requested or not
+ * @param ackRoute A boolean indicating whether the it wants the interface connected to ack route
+ * @return The NIC index as a 32-bit unsigned integer.
+ */
+uint32_t
+RdmaHw::GetNicIdxOfQp(bool receive, bool ackRoute)
+{
+    if (ackRoute == false) { // give me usual interface/port connected to switch node
+        if (receive == false)  // wants to know the port for sending flows
+            return 2;
+        else // wants to know which port for receiving incoming flows
+            return 1;
+    }
+    else { // give me pcie interface port
+        if (receive == false) {
+            if (m_node->GetId() == 0) { // for the starting node, the send and receive ports are switched...
+                return 3;
+            } else {
+                return 4;
+            }
+        } else {
+            if (m_node->GetId() == 0) {
+                return 4;
+            } else {
+                return 3;
+            }
+        }
     }
     // TODO: Assume that you always have two NICs
     // if (optical){
@@ -331,7 +359,11 @@ RdmaHw::AddQueuePair(uint32_t src,
     qp->SetAppNotifyCallback(notifyAppFinish);
     qp->SetAppSentCallback(notifyAppSent);
     // add qp
-    uint32_t nic_idx = GetNicIdxOfQp(qp);
+    uint32_t nic_idx;
+    if (!m_optical)
+        nic_idx = GetNicIdxOfQp(qp);
+    else
+        nic_idx = GetNicIdxOfQp(false, false);
     m_nic[nic_idx].qpGrp->AddQp(qp);
     uint64_t key = GetQpKey(dip.Get(), sport, pg);
     m_qpMap[key] = qp;
@@ -384,7 +416,11 @@ RdmaHw::DeleteQueuePair(Ptr<RdmaQueuePair> qp)
     uint64_t key = GetQpKey(qp->dip.Get(), qp->sport, qp->m_pg);
     m_qpMap[key] = nullptr;
     m_qpMap.erase(key);
-    uint32_t nic_idx = GetNicIdxOfQp(qp);
+    uint32_t nic_idx;
+    if (!m_optical)
+        nic_idx = GetNicIdxOfQp(qp);
+    else
+        nic_idx = GetNicIdxOfQp(false, false);
     // remove qp from the qpGrp
     auto it = std::find(m_nic[nic_idx].qpGrp->m_qps.begin(), m_nic[nic_idx].qpGrp->m_qps.end(), qp);
     if (it != m_nic[nic_idx].qpGrp->m_qps.end())
@@ -427,22 +463,16 @@ RdmaHw::GetRxQp(uint32_t sip,
 uint32_t
 RdmaHw::GetNicIdxOfRxQp(Ptr<RdmaRxQueuePair> q)
 {
-    if (!m_optical) {
-        auto& v = m_rtTable[q->dip];
-        if (v.size() > 0)
-        {
-            return v[q->GetHash() % v.size()];
-        }
-        else
-        {
-            NS_ASSERT_MSG(false, "We assume at least one NIC is alive");
-        }
+    auto& v = m_rtTable[q->dip];
+    if (v.size() > 0)
+    {
+        return v[q->GetHash() % v.size()];
     }
-    else {
-        return 1;
+    else
+    {
+        NS_ASSERT_MSG(false, "We assume at least one NIC is alive");
     }
 }
-
 void
 RdmaHw::DeleteRxQp(uint32_t dip, uint16_t pg, uint16_t dport)
 {
@@ -493,7 +523,11 @@ RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader& ch)
     // TODO find corresponding rx queue pair
     Ptr<RdmaRxQueuePair> rxQp =
         GetRxQp(ch.dip, ch.sip, ch.udp.dport, ch.udp.sport, ch.udp.pg, true);
-    uint32_t nic_id = GetNicIdxOfRxQp(rxQp);
+    uint32_t nic_id;
+    if (!m_optical)
+        nic_id = GetNicIdxOfRxQp(rxQp);
+    else
+        nic_id = GetNicIdxOfQp(false, false); // rxQp has sip and dip flipped so this is set to false even though this is a receive func
     if (enable_pcie_pause)
     { //&& ((m_node->GetId())%16 == 0 || (m_node->GetId())%16 == 8)) { //&&
       //Simulator::Now().GetMicroSeconds() > m_node->GetId(4)
@@ -605,7 +639,12 @@ RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader& ch)
         newp->AddHeader(head);
         AddHeader(newp, 0x800); // Attach PPP header
 
-        uint32_t nic_idx = GetNicIdxOfRxQp(rxQp);
+        uint32_t nic_idx;
+        if (!m_optical) {
+            nic_idx = GetNicIdxOfRxQp(rxQp);
+        } else {
+            nic_idx = GetNicIdxOfQp(false, true); // send ack via PCIe
+        }
         m_nic[nic_idx].dev->RdmaEnqueueHighPrioQ(newp);
         m_nic[nic_idx].dev->TriggerTransmit();
     }
@@ -635,7 +674,12 @@ RdmaHw::ReceiveCnp(Ptr<Packet> p, CustomHeader& ch)
     if (!qp)
         std::cout << "ERROR: QCN NIC cannot find the flow\n";
     // get nic
-    uint32_t nic_idx = GetNicIdxOfQp(qp);
+    uint32_t nic_idx;
+    if (!m_optical)
+        nic_idx = GetNicIdxOfQp(qp);
+    else
+        nic_idx = GetNicIdxOfQp(true, false);
+
     Ptr<QbbNetDevice> dev = m_nic[nic_idx].dev;
 
     if (qp->m_rate == 0) // lazy initialization
@@ -682,7 +726,11 @@ RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader& ch)
         return 0;
     }
 
-    uint32_t nic_idx = GetNicIdxOfQp(qp);
+    uint32_t nic_idx;
+    if (!m_optical)
+        nic_idx = GetNicIdxOfQp(qp);
+    else
+        nic_idx = GetNicIdxOfQp(true, true);  // receiving ack so both true
     Ptr<QbbNetDevice> dev = m_nic[nic_idx].dev;
     if (m_ack_interval == 0)
         std::cout << "ERROR: shouldn't receive ack\n";
@@ -846,6 +894,17 @@ RdmaHw::Receive(Ptr<Packet> p, CustomHeader& ch)
         uint32_t nextHopPortId = nodeId * 2 + 1;
         copyTag.SetNextHopPortId(nextHopPortId);
         p->ReplacePacketTag(copyTag);
+        if (ch.l3Prot == 0xFD || ch.l3Prot == 0xFC) {
+            // want to route only acks/nacks using pcie
+            uint32_t nic_idx = GetNicIdxOfQp(false, true);
+            m_nic[nic_idx].dev->RdmaEnqueueHighPrioQ(p);
+            m_nic[nic_idx].dev->TriggerTransmit();
+        } else {
+            uint32_t nic_idx = GetNicIdxOfQp(false, false);
+            m_nic[nic_idx].dev->RdmaEnqueueHighPrioQ(p);
+            m_nic[nic_idx].dev->TriggerTransmit();
+
+        }
     }
     return 0;
 }
@@ -993,7 +1052,11 @@ RdmaHw::RecoverQueue(Ptr<RdmaQueuePair> qp)
     }
     // Allow retransmission in case this QP is dead currently.
     ChangeRate(qp, qp->m_max_rate);
-    uint32_t nic_idx = GetNicIdxOfQp(qp);
+    uint32_t nic_idx;
+    if (!m_optical)
+        nic_idx = GetNicIdxOfQp(qp);
+    else
+        nic_idx = GetNicIdxOfQp(false, false);
     m_nic[nic_idx].dev->TriggerTransmit();
 }
 
@@ -1073,7 +1136,11 @@ RdmaHw::RedistributeQp()
     for (auto& it : m_qpMap)
     {
         Ptr<RdmaQueuePair> qp = it.second;
-        uint32_t nic_idx = GetNicIdxOfQp(qp);
+        uint32_t nic_idx;
+        if (!m_optical)
+            nic_idx = GetNicIdxOfQp(qp);
+        else
+            nic_idx = GetNicIdxOfQp(false, false);
         m_nic[nic_idx].qpGrp->AddQp(qp);
     }
 
@@ -1141,7 +1208,13 @@ RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp)
     else if (m_reps)
     {
         uint32_t sentBytes = qp->m_size - qp->GetBytesLeft();
-        uint32_t nic_idx = GetNicIdxOfQp(qp);
+
+        uint32_t nic_idx;
+        if (!m_optical) {
+            nic_idx = GetNicIdxOfQp(qp);
+        } else {
+            nic_idx = GetNicIdxOfQp(false, false);
+        }
         DataRate m_bps = m_nic[nic_idx].dev->GetDataRate();
         double bdp = m_bps.GetBitRate() * 1 * (qp->m_baseRtt * 1e-9) / 8;
         if ((sentBytes < bdp && !qp->allentropiesTried) || qp->cachedEntropy.Get() == -1)
@@ -1293,7 +1366,11 @@ RdmaHw::ChangeRate(Ptr<RdmaQueuePair> qp, DataRate new_rate)
     Time new_sendintTime = new_rate.CalculateBytesTxTime(qp->lastPktSize);
     qp->m_nextAvail = qp->m_nextAvail + new_sendintTime - sendingTime;
     // update nic's next avail event
-    uint32_t nic_idx = GetNicIdxOfQp(qp);
+    uint32_t nic_idx;
+    if (!m_optical)
+        nic_idx = GetNicIdxOfQp(qp);
+    else
+        nic_idx = GetNicIdxOfQp(false, false);
     m_nic[nic_idx].dev->UpdateNextAvail(qp->m_nextAvail);
 #endif
 
