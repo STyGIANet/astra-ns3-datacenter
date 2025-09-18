@@ -899,6 +899,11 @@ RdmaHw::Receive(Ptr<Packet> p, CustomHeader& ch)
             uint32_t nic_idx = GetNicIdxOfQp(false, true);
             m_nic[nic_idx].dev->RdmaEnqueueHighPrioQ(p);
             m_nic[nic_idx].dev->TriggerTransmit();
+        } else {
+            uint32_t nic_idx = GetNicIdxOfQp(false, false);
+            m_nic[nic_idx].dev->RdmaEnqueueHighPrioQ(p);
+            m_nic[nic_idx].dev->TriggerTransmit();
+
         }
     }
     return 0;
