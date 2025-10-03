@@ -30,6 +30,9 @@ class OpticalRoutingHelper
           return false;
       }
 
+      string skip;
+      std::getline(inFile, skip);
+      std::getline(inFile, skip);
       // Find the size of each dimension.
       string step, srcNode, dstNode;
       while (inFile >> step >> srcNode >> dstNode) {
