@@ -213,7 +213,11 @@ int SwitchNode::GetOutDev(Ptr<Packet> p, CustomHeader &ch){
 		// read the tag from the packet copy
 		RoutingTag tagCopy;
 		bool tagFound = p->PeekPacketTag(tagCopy);
-		return tagCopy.GetNextHopPortId();
+		if (ch.l3Prot == 0xFC || ch.l3Prot == 0xFD) {
+			return tagCopy.GetDestId() + 1;
+		} else {
+			return tagCopy.GetNextHopPortId();
+		}
 	}
 }
 

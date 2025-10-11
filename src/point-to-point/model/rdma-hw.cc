@@ -295,19 +295,7 @@ RdmaHw::GetNicIdxOfQp(bool receive, bool ackRoute)
             return 1;
     }
     else { // give me pcie interface port
-        if (receive == false) {
-            if (m_node->GetId() == 0) { // for the starting node, the send and receive ports are switched...
-                return 3;
-            } else {
-                return 4;
-            }
-        } else {
-            if (m_node->GetId() == 0) {
-                return 4;
-            } else {
-                return 3;
-            }
-        }
+        return 3;
     }
     // TODO: Assume that you always have two NICs
     // if (optical){
@@ -905,7 +893,7 @@ RdmaHw::Receive(Ptr<Packet> p, CustomHeader& ch)
             m_nic[nic_idx].dev->TriggerTransmit();
 
         }
-    }
+    }   
     return 0;
 }
 

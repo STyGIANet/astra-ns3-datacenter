@@ -1183,9 +1183,6 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
             if (n.Get(j)->GetNodeType() != 0)
                 continue;
             uint64_t delay = pairDelay[n.Get(i)][n.Get(j)];
-            if (optical == 1) {
-                delay = 500 * node_num * 2;
-            }
             uint64_t txDelay = pairTxDelay[n.Get(i)][n.Get(j)];
             uint64_t rtt = delay * 2 + txDelay;
             uint64_t bw = pairBw[i][j];
