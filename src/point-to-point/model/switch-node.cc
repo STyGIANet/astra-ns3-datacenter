@@ -89,7 +89,7 @@ SwitchNode::SwitchNode(){
 }
 
 int SwitchNode::GetOutDev(Ptr<Packet> p, CustomHeader &ch){
-	if (!m_optical) {
+	if (!m_optical || (ch.l3Prot == 0xFF || ch.l3Prot == 0xFE || ((ch.l3Prot == 0xFD || ch.l3Prot == 0xFC)))) {
 		// look up entries
 		auto entry = m_rtTable.find(ch.dip);
 

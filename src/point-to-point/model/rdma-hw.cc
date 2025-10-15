@@ -636,8 +636,8 @@ RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader& ch)
             uint32_t srcId = copyTag.GetSrcId();
             copyTag.SetSrcId(copyTag.GetDestId());
             copyTag.SetDestId(srcId);
-            uint32_t nodeId = QbbNetDevice::GetNextHopNodeId(copyTag.GetDestId(), 1);
-            uint32_t nextHopPortId = 1 + copyTag.GetDestId() * 2;  // todo: replace this logic with some pcie system...
+            // uint32_t nodeId = QbbNetDevice::GetNextHopNodeId(copyTag.GetDestId(), 1);
+            uint32_t nextHopPortId = 1 + copyTag.GetDestId();  // todo: replace this logic with some pcie system...
             copyTag.SetNextHopPortId(nextHopPortId);            
             newp->AddPacketTag(copyTag);
         }
