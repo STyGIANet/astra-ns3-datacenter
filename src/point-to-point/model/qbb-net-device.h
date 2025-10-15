@@ -142,7 +142,7 @@ public:
   /**
    * Next Hop Resources
    */
-  static uint32_t GetNextHopNodeId(int id);
+  static uint32_t GetNextHopNodeId(int id, uint32_t direction);
   // void SetNextHopNodeId(uint32_t id);
 
 protected:

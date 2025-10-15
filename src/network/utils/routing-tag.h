@@ -91,10 +91,19 @@ class RoutingTag : public Tag
      */
     // uint32_t AllocateNextHopId(uint32_t id);
 
+    uint32_t GetDirection(){
+      return m_direction;
+    }
+
+    void SetDirection(uint32_t direction){
+      m_direction = direction;
+    }
+
   private:
     uint32_t m_sid; //!< Id of the source node
     uint32_t m_did; //!< Id of the destination node
     uint32_t m_nextHopPortId; //!< Id of the port to route the packet to
+    uint32_t m_direction;
 };
 
 } // namespace ns3

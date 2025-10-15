@@ -589,12 +589,15 @@ namespace ns3 {
 	/**
     * Next Hop Resources
     */
-	uint32_t QbbNetDevice::GetNextHopNodeId(int id){
+	uint32_t QbbNetDevice::GetNextHopNodeId(int id, uint32_t direction){
 		if (ns3::OpticalRoutingHelper::next_hop_node_ids[id].size() < ns3::OpticalRoutingHelper::stepId) {
 			std::cout << "Number of steps defined in routing file insufficient" << std::endl;
 			exit(1);
 		}
-		return ns3::OpticalRoutingHelper::next_hop_node_ids[id][ns3::OpticalRoutingHelper::stepId];
+		if(direction)
+			return ns3::OpticalRoutingHelper::next_hop_node_ids[id][ns3::OpticalRoutingHelper::stepId];
+		else
+			return ns3::OpticalRoutingHelper::next_hop_node_ids_antiClock[id][ns3::OpticalRoutingHelper::stepId];
 	}
 	// void QbbNetDevice::SetNextHopNodeId(uint32_t id){
 	// 	nextHopNodeId = id;

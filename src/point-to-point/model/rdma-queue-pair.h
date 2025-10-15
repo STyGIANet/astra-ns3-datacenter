@@ -190,6 +190,8 @@ public:
 	UniqueOrderedSet cachedEntropy;
 	uint32_t maxQps = 0;
 
+	uint32_t m_direction = 1;
+
 	//reps
 	RepsBuffer repsBuffer;
 

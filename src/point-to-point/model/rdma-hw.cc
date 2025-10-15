@@ -15,6 +15,7 @@
 #include <ns3/seq-ts-header.h>
 #include <ns3/simulator.h>
 #include <ns3/udp-header.h>
+#include <ns3/optical-routing-helper.h>
 
 namespace ns3
 {
@@ -286,13 +287,28 @@ RdmaHw::GetNicIdxOfQp(Ptr<RdmaQueuePair> qp)
  * @return The NIC index as a 32-bit unsigned integer.
  */
 uint32_t
-RdmaHw::GetNicIdxOfQp(bool receive, bool ackRoute)
+RdmaHw::GetNicIdxOfQp(bool receive, bool ackRoute, bool direction)
 {
     if (ackRoute == false) { // give me usual interface/port connected to switch node
         if (receive == false)  // wants to know the port for sending flows
-            return 2;
-        else // wants to know which port for receiving incoming flows
-            return 1;
+        {
+            // For sending
+            // direction=1 clockwise, direction=0 anticlockwise
+            if (direction)
+                return 2;
+            else{
+                return 1;
+            }
+        }
+        else {
+            // For receiving
+            // wants to know which port for receiving incoming flows
+            if(direction)
+                return 1;
+            else{
+                return 2;
+            }
+        }
     }
     else { // give me pcie interface port
         return 3;
@@ -346,12 +362,15 @@ RdmaHw::AddQueuePair(uint32_t src,
     qp->SetVarWin(m_var_win);
     qp->SetAppNotifyCallback(notifyAppFinish);
     qp->SetAppSentCallback(notifyAppSent);
+
+    uint32_t direction = ns3::OpticalRoutingHelper::GetDirection(src);
+    qp->m_direction = direction;
     // add qp
     uint32_t nic_idx;
     if (!m_optical)
         nic_idx = GetNicIdxOfQp(qp);
     else
-        nic_idx = GetNicIdxOfQp(false, false);
+        nic_idx = GetNicIdxOfQp(false, false,qp->m_direction);
     m_nic[nic_idx].qpGrp->AddQp(qp);
     uint64_t key = GetQpKey(dip.Get(), sport, pg);
     m_qpMap[key] = qp;
@@ -408,7 +427,7 @@ RdmaHw::DeleteQueuePair(Ptr<RdmaQueuePair> qp)
     if (!m_optical)
         nic_idx = GetNicIdxOfQp(qp);
     else
-        nic_idx = GetNicIdxOfQp(false, false);
+        nic_idx = GetNicIdxOfQp(false, false,qp->m_direction);
     // remove qp from the qpGrp
     auto it = std::find(m_nic[nic_idx].qpGrp->m_qps.begin(), m_nic[nic_idx].qpGrp->m_qps.end(), qp);
     if (it != m_nic[nic_idx].qpGrp->m_qps.end())
@@ -514,8 +533,11 @@ RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader& ch)
     uint32_t nic_id;
     if (!m_optical)
         nic_id = GetNicIdxOfRxQp(rxQp);
-    else
-        nic_id = GetNicIdxOfQp(false, false); // rxQp has sip and dip flipped so this is set to false even though this is a receive func
+    else{
+        RoutingTag copyTag;
+        p->PeekPacketTag(copyTag);
+        nic_id = GetNicIdxOfQp(false, false,copyTag.GetDirection()); // rxQp has sip and dip flipped so this is set to false even though this is a receive func
+    }
     if (enable_pcie_pause)
     { //&& ((m_node->GetId())%16 == 0 || (m_node->GetId())%16 == 8)) { //&&
       //Simulator::Now().GetMicroSeconds() > m_node->GetId(4)
@@ -614,7 +636,7 @@ RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader& ch)
             uint32_t srcId = copyTag.GetSrcId();
             copyTag.SetSrcId(copyTag.GetDestId());
             copyTag.SetDestId(srcId);
-            uint32_t nodeId = QbbNetDevice::GetNextHopNodeId(copyTag.GetDestId());
+            uint32_t nodeId = QbbNetDevice::GetNextHopNodeId(copyTag.GetDestId(), 1);
             uint32_t nextHopPortId = 1 + copyTag.GetDestId() * 2;  // todo: replace this logic with some pcie system...
             copyTag.SetNextHopPortId(nextHopPortId);            
             newp->AddPacketTag(copyTag);
@@ -631,7 +653,7 @@ RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader& ch)
         if (!m_optical) {
             nic_idx = GetNicIdxOfRxQp(rxQp);
         } else {
-            nic_idx = GetNicIdxOfQp(false, true); // send ack via PCIe
+            nic_idx = GetNicIdxOfQp(false, true,1); // send ack via PCIe
         }
         m_nic[nic_idx].dev->RdmaEnqueueHighPrioQ(newp);
         m_nic[nic_idx].dev->TriggerTransmit();
@@ -666,7 +688,7 @@ RdmaHw::ReceiveCnp(Ptr<Packet> p, CustomHeader& ch)
     if (!m_optical)
         nic_idx = GetNicIdxOfQp(qp);
     else
-        nic_idx = GetNicIdxOfQp(true, false);
+        nic_idx = GetNicIdxOfQp(true, false,qp->m_direction);
 
     Ptr<QbbNetDevice> dev = m_nic[nic_idx].dev;
 
@@ -718,7 +740,7 @@ RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader& ch)
     if (!m_optical)
         nic_idx = GetNicIdxOfQp(qp);
     else
-        nic_idx = GetNicIdxOfQp(true, true);  // receiving ack so both true
+        nic_idx = GetNicIdxOfQp(true, true,qp->m_direction);  // receiving ack so both true
     Ptr<QbbNetDevice> dev = m_nic[nic_idx].dev;
     if (m_ack_interval == 0)
         std::cout << "ERROR: shouldn't receive ack\n";
@@ -878,17 +900,17 @@ RdmaHw::Receive(Ptr<Packet> p, CustomHeader& ch)
         // if not destined, then transmit to switch on port 1 on this node
         // update routing tag to inform switch where to send next  routing tag should have porting num
         // of switch
-        uint32_t nodeId = QbbNetDevice::GetNextHopNodeId(m_node->GetId());
-        uint32_t nextHopPortId = nodeId * 2 + 1;
+        uint32_t nodeId = QbbNetDevice::GetNextHopNodeId(m_node->GetId(), copyTag.GetDirection());
+        uint32_t nextHopPortId = copyTag.GetDirection()? nodeId * 2 + 1: nodeId * 2 + 2;
         copyTag.SetNextHopPortId(nextHopPortId);
         p->ReplacePacketTag(copyTag);
         if (ch.l3Prot == 0xFD || ch.l3Prot == 0xFC) {
             // want to route only acks/nacks using pcie
-            uint32_t nic_idx = GetNicIdxOfQp(false, true);
+            uint32_t nic_idx = GetNicIdxOfQp(false, true,copyTag.GetDirection());
             m_nic[nic_idx].dev->RdmaEnqueueHighPrioQ(p);
             m_nic[nic_idx].dev->TriggerTransmit();
         } else {
-            uint32_t nic_idx = GetNicIdxOfQp(false, false);
+            uint32_t nic_idx = GetNicIdxOfQp(false, false,copyTag.GetDirection());
             m_nic[nic_idx].dev->RdmaEnqueueHighPrioQ(p);
             m_nic[nic_idx].dev->TriggerTransmit();
 
@@ -1044,7 +1066,7 @@ RdmaHw::RecoverQueue(Ptr<RdmaQueuePair> qp)
     if (!m_optical)
         nic_idx = GetNicIdxOfQp(qp);
     else
-        nic_idx = GetNicIdxOfQp(false, false);
+        nic_idx = GetNicIdxOfQp(false, false,qp->m_direction);
     m_nic[nic_idx].dev->TriggerTransmit();
 }
 
@@ -1128,7 +1150,7 @@ RdmaHw::RedistributeQp()
         if (!m_optical)
             nic_idx = GetNicIdxOfQp(qp);
         else
-            nic_idx = GetNicIdxOfQp(false, false);
+            nic_idx = GetNicIdxOfQp(false, false,qp->m_direction);
         m_nic[nic_idx].qpGrp->AddQp(qp);
     }
 
@@ -1201,7 +1223,7 @@ RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp)
         if (!m_optical) {
             nic_idx = GetNicIdxOfQp(qp);
         } else {
-            nic_idx = GetNicIdxOfQp(false, false);
+            nic_idx = GetNicIdxOfQp(false, false,qp->m_direction);
         }
         DataRate m_bps = m_nic[nic_idx].dev->GetDataRate();
         double bdp = m_bps.GetBitRate() * 1 * (qp->m_baseRtt * 1e-9) / 8;
@@ -1231,8 +1253,9 @@ RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp)
         RoutingTag copyTag;
         copyTag.SetSrcId(qp->m_src);
         copyTag.SetDestId(qp->m_dest);
-        uint32_t nodeId = QbbNetDevice::GetNextHopNodeId(qp->m_src);
-        uint32_t nextHopPortId = nodeId * 2 + 1;
+        copyTag.SetDirection(qp->m_direction);
+        uint32_t nodeId = QbbNetDevice::GetNextHopNodeId(qp->m_src, qp->m_direction);
+        uint32_t nextHopPortId = qp->m_direction? nodeId * 2 + 1: nodeId * 2 + 2;
         copyTag.SetNextHopPortId(nextHopPortId);
         p->AddPacketTag(copyTag);
     }
@@ -1358,7 +1381,7 @@ RdmaHw::ChangeRate(Ptr<RdmaQueuePair> qp, DataRate new_rate)
     if (!m_optical)
         nic_idx = GetNicIdxOfQp(qp);
     else
-        nic_idx = GetNicIdxOfQp(false, false);
+        nic_idx = GetNicIdxOfQp(false, false,qp->m_direction);
     m_nic[nic_idx].dev->UpdateNextAvail(qp->m_nextAvail);
 #endif
 

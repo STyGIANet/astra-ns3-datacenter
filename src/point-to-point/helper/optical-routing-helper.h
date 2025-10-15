@@ -15,10 +15,55 @@ class OpticalRoutingHelper
 {
   public:
     inline static std::unordered_map<int,std::vector<int>> next_hop_node_ids;
+    inline static std::unordered_map<int,std::vector<int>> next_hop_node_ids_antiClock;
     inline static int stepId = -1;
+
+    inline static bool swing = 0;
+    inline static int numPhaseSteps = 0;
+
+    static void setSwing(int n){
+      swing = 1;
+      numPhaseSteps = n; // log n
+    }
 
     static void update_next_hop_node_ids() {
       stepId++;
+    }
+
+    static int GetDirection(uint32_t id){
+      if (swing){
+        if (id%2){
+          if (stepId < numPhaseSteps){
+            if(stepId%2)
+              return 1;
+            else
+              return 0;
+          }
+          else{
+            if(stepId%2)
+              return 0;
+            else
+              return 1;
+          }
+        }
+        else{
+          if (stepId < numPhaseSteps){
+            if(stepId%2)
+              return 0;
+            else
+              return 1;
+          }
+          else{
+            if(stepId%2)
+              return 1;
+            else
+              return 0;
+          }
+        }
+      }
+      else{
+        return 1;
+      }
     }
 
     static bool read_optical_routing_config(string optical_routing_configuration) {
@@ -37,6 +82,7 @@ class OpticalRoutingHelper
       string step, srcNode, dstNode;
       while (inFile >> step >> srcNode >> dstNode) {
           next_hop_node_ids[stoi(srcNode)].push_back(stoi(dstNode));
+          next_hop_node_ids_antiClock[stoi(dstNode)].push_back(stoi(srcNode));
       }
       inFile.close();
       return true;

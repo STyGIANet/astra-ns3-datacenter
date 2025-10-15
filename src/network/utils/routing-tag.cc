@@ -47,7 +47,7 @@ uint32_t
 RoutingTag::GetSerializedSize() const
 {
     NS_LOG_FUNCTION(this);
-    return 4 + 4 + 4;
+    return 4 + 4 + 4 + 4;
 }
 
 void
@@ -57,6 +57,7 @@ RoutingTag::Serialize(TagBuffer buf) const
     buf.WriteU32(m_sid);
     buf.WriteU32(m_did);
     buf.WriteU32(m_nextHopPortId);
+    buf.WriteU32(m_direction);
 }
 
 void
@@ -66,6 +67,7 @@ RoutingTag::Deserialize(TagBuffer buf)
     m_sid = buf.ReadU32();
     m_did = buf.ReadU32();
     m_nextHopPortId = buf.ReadU32();
+    m_direction = buf.ReadU32();
 }
 
 void
@@ -75,6 +77,7 @@ RoutingTag::Print(std::ostream& os) const
     os << "SourceId=" << m_sid;
     os << "DestinationId=" << m_did;
     os << "NextHopPortId=" << m_nextHopPortId;
+    os << "NextHopPortId=" << m_direction;
 }
 
 RoutingTag::RoutingTag()
