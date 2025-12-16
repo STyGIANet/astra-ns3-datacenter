@@ -6,3 +6,11 @@
 !subdir/
 !scratch-simulator.cc
 !CMakeLists.txt
+
+!output/
+output/*
+!output/ipdps_ocs_run_multiple.sh
+
+!topology/
+topology/*
+!topology/*.py
