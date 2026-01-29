@@ -4,10 +4,25 @@
 #include <unordered_map>
 #include <vector>
 #include <fstream>
+#include "json.hpp"
 #include <iostream>
 #include <string>
 
 using namespace std;
+using json = nlohmann::json;
+
+struct Step {
+    int step;
+    // Topology is a list of lists of integers: [[0,1,1], [1,2,1]...]
+    std::vector<std::vector<int>> topology; 
+};
+
+struct SimulationData {
+    std::vector<Step> steps;
+};
+
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(Step, step, topology)
+NLOHMANN_DEFINE_TYPE_NON_INTRUSIVE(SimulationData, steps)
 
 namespace ns3 {
 
@@ -70,20 +85,36 @@ class OpticalRoutingHelper
       ifstream inFile;
       inFile.open(optical_routing_configuration);
       if (!inFile) {
-          cerr << "Unable to open file: " << optical_routing_configuration << endl;
+          std::cout << "Unable to open file: " << optical_routing_configuration << std::endl;
           fflush(stdout);
           return false;
       }
-
-      string skip;
-      std::getline(inFile, skip);
-      std::getline(inFile, skip);
-      // Find the size of each dimension.
-      string step, srcNode, dstNode;
-      while (inFile >> step >> srcNode >> dstNode) {
-          next_hop_node_ids[stoi(srcNode)].push_back(stoi(dstNode));
-          next_hop_node_ids_antiClock[stoi(dstNode)].push_back(stoi(srcNode));
+      json j;
+      try {
+          inFile >> j;
+      } catch (json::parse_error& e) {
+          std::cout << "Parse error: " << e.what() << std::endl;
+          return 1;
       }
+      SimulationData data = j.get<SimulationData>();
+      int step, srcNode, dstNode;
+      for (const auto& s : data.steps) {
+        for (const auto& topo : s.topology) {
+          srcNode = topo[0];
+          dstNode = topo[1];
+          next_hop_node_ids[srcNode].push_back(dstNode);
+          next_hop_node_ids_antiClock[dstNode].push_back(srcNode);
+        }
+      }
+      // string skip;
+      // std::getline(inFile, skip);
+      // std::getline(inFile, skip);
+      // // Find the size of each dimension.
+      // string step, srcNode, dstNode;
+      // while (inFile >> step >> srcNode >> dstNode) {
+      //     next_hop_node_ids[stoi(srcNode)].push_back(stoi(dstNode));
+      //     next_hop_node_ids_antiClock[stoi(dstNode)].push_back(stoi(srcNode));
+      // }
       inFile.close();
       return true;
   }
