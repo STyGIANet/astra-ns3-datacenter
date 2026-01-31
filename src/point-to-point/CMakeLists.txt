@@ -23,6 +23,7 @@ build_lib(
     ${mpi_sources}
     helper/point-to-point-helper.cc
     helper/qbb-helper.cc
+    helper/optical-routing-helper.cc
     model/cn-header.cc
     model/pause-header.cc
     model/pint.cc
@@ -43,8 +44,8 @@ build_lib(
     ${mpi_headers}
     helper/point-to-point-helper.h
     helper/qbb-helper.h
-    helper/sim-setting.h
     helper/optical-routing-helper.h
+    helper/sim-setting.h
     model/cn-header.h
     model/pause-header.h
     model/pint.h

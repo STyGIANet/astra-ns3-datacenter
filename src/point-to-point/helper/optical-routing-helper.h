@@ -4,11 +4,13 @@
 #include <unordered_map>
 #include <vector>
 #include <fstream>
-#include "json.hpp"
 #include <iostream>
 #include <string>
+#include "json.hpp"
 
-using namespace std;
+#include "ns3/node-container.h"
+#include "ns3/qbb-net-device.h"
+
 using json = nlohmann::json;
 
 struct Step {
@@ -29,96 +31,22 @@ namespace ns3 {
 class OpticalRoutingHelper 
 {
   public:
-    inline static std::unordered_map<int,std::vector<int>> next_hop_node_ids;
-    inline static std::unordered_map<int,std::vector<int>> next_hop_node_ids_antiClock;
+    inline static std::unordered_map<int, std::vector<int>> next_hop_node_ids;
+    inline static std::unordered_map<int, std::vector<int>> next_hop_node_ids_antiClock;
+    inline static std::vector<int> step_bw_multiplier;
     inline static int stepId = -1;
-
-    inline static bool swing = 0;
+    inline static bool swing = false;
     inline static int numPhaseSteps = 0;
+    inline static uint64_t initialBW = 0;
+    inline static NodeContainer* n = nullptr;
 
-    static void setSwing(int n){
-      swing = 1;
-      numPhaseSteps = n; // log n
-    }
-
-    static void update_next_hop_node_ids() {
-      stepId++;
-    }
-
-    static int GetDirection(uint32_t id){
-      if (swing){
-        if (id%2){
-          if (stepId < numPhaseSteps){
-            if(stepId%2)
-              return 1;
-            else
-              return 0;
-          }
-          else{
-            if(stepId%2)
-              return 0;
-            else
-              return 1;
-          }
-        }
-        else{
-          if (stepId < numPhaseSteps){
-            if(stepId%2)
-              return 0;
-            else
-              return 1;
-          }
-          else{
-            if(stepId%2)
-              return 1;
-            else
-              return 0;
-          }
-        }
-      }
-      else{
-        return 1;
-      }
-    }
-
-    static bool read_optical_routing_config(string optical_routing_configuration) {
-      ifstream inFile;
-      inFile.open(optical_routing_configuration);
-      if (!inFile) {
-          std::cout << "Unable to open file: " << optical_routing_configuration << std::endl;
-          fflush(stdout);
-          return false;
-      }
-      json j;
-      try {
-          inFile >> j;
-      } catch (json::parse_error& e) {
-          std::cout << "Parse error: " << e.what() << std::endl;
-          return 1;
-      }
-      SimulationData data = j.get<SimulationData>();
-      int step, srcNode, dstNode;
-      for (const auto& s : data.steps) {
-        for (const auto& topo : s.topology) {
-          srcNode = topo[0];
-          dstNode = topo[1];
-          next_hop_node_ids[srcNode].push_back(dstNode);
-          next_hop_node_ids_antiClock[dstNode].push_back(srcNode);
-        }
-      }
-      // string skip;
-      // std::getline(inFile, skip);
-      // std::getline(inFile, skip);
-      // // Find the size of each dimension.
-      // string step, srcNode, dstNode;
-      // while (inFile >> step >> srcNode >> dstNode) {
-      //     next_hop_node_ids[stoi(srcNode)].push_back(stoi(dstNode));
-      //     next_hop_node_ids_antiClock[stoi(dstNode)].push_back(stoi(srcNode));
-      // }
-      inFile.close();
-      return true;
-  }
-};
+    static void setSwing(int n);
+    static void update_next_hop_node_ids();
+    static int GetDirection(uint32_t id);
+    static bool read_optical_routing_config(const std::string optical_routing_configuration, bool isSwing, NodeContainer& n);
+    static void update_nic_rates(double multiplier);
+    static uint64_t get_first_nic_rate();
+  };
 
 } // namespace ns3
 
