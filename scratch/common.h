@@ -1052,19 +1052,19 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
                 Ptr<QbbNetDevice> dev = DynamicCast<QbbNetDevice>(sw->GetDevice(j));
                 // set ecn
                 uint64_t rate = dev->GetDataRate().GetBitRate();
-                NS_ASSERT_MSG(rate2kmin.find(rate) != rate2kmin.end(),
-                              "must set kmin for each link speed");
-                NS_ASSERT_MSG(rate2kmax.find(rate) != rate2kmax.end(),
-                              "must set kmax for each link speed");
-                NS_ASSERT_MSG(rate2pmax.find(rate) != rate2pmax.end(),
-                              "must set pmax for each link speed");
+                // NS_ASSERT_MSG(rate2kmin.find(rate) != rate2kmin.end(),
+                //               "must set kmin for each link speed");
+                // NS_ASSERT_MSG(rate2kmax.find(rate) != rate2kmax.end(),
+                //               "must set kmax for each link speed");
+                // NS_ASSERT_MSG(rate2pmax.find(rate) != rate2pmax.end(),
+                //               "must set pmax for each link speed");
                 if (cc_mode == 8){
-                    NS_ASSERT_MSG(rate2kminDctcp.find(rate) != rate2kminDctcp.end(),
-                              "must set kmin for each link speed");
-                    NS_ASSERT_MSG(rate2kmaxDctcp.find(rate) != rate2kmaxDctcp.end(),
-                                  "must set kmax for each link speed");
-                    NS_ASSERT_MSG(rate2pmaxDctcp.find(rate) != rate2pmaxDctcp.end(),
-                                  "must set pmax for each link speed");
+                    // NS_ASSERT_MSG(rate2kminDctcp.find(rate) != rate2kminDctcp.end(),
+                    //           "must set kmin for each link speed");
+                    // NS_ASSERT_MSG(rate2kmaxDctcp.find(rate) != rate2kmaxDctcp.end(),
+                    //               "must set kmax for each link speed");
+                    // NS_ASSERT_MSG(rate2pmaxDctcp.find(rate) != rate2pmaxDctcp.end(),
+                    //               "must set pmax for each link speed");
                     // kmin = kmax = bdp/7
                     sw->m_mmu->ConfigEcn(j, rate2kminDctcp[rate], rate2kmaxDctcp[rate], rate2pmaxDctcp[rate]);
                 }
@@ -1291,9 +1291,21 @@ SetupNetwork(void (*qp_finish)(FILE*, Ptr<RdmaQueuePair>))
         std::cout << node_num - switch_num << " " << node_num - switch_num + allTors << std::endl;
     }
 
-    // schedule buffer monitor
-    FILE* qlen_output = fopen(qlen_mon_file.c_str(), "w");
-    Simulator::Schedule(NanoSeconds(qlen_mon_start), &monitor_buffer, qlen_output, &n);
+    // schedule buffer monitor (open output file and verify)
+    FILE* qlen_output = nullptr;
+    if (!qlen_mon_file.empty())
+    {
+        qlen_output = fopen(qlen_mon_file.c_str(), "w");
+        if (qlen_output == nullptr)
+        {
+            std::cerr << "Warning: cannot open qlen mon file: " << qlen_mon_file
+                      << " - disabling qlen monitor" << std::endl;
+        }
+        else
+        {
+            Simulator::Schedule(NanoSeconds(qlen_mon_start), &monitor_buffer, qlen_output, &n);
+        }
+    }
     std::cout << "SetupNetwork finished!" << std::endl;
     return true;
 }

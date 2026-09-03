@@ -106,7 +106,7 @@ bool OpticalRoutingHelper::read_optical_routing_config(const std::string optical
   n = &nContainer;
   std::ifstream inFile(optical_routing_configuration);
   if (!inFile) {
-    std::cout << "Unable to open file: " << optical_routing_configuration << std::endl;
+    std::cout << "Unable to open optical routing file: " << optical_routing_configuration << std::endl;
     std::flush(std::cout);
     return false;
   }
