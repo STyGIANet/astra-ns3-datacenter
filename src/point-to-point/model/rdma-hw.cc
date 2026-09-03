@@ -19,7 +19,7 @@
 
 namespace ns3{
 
-TypeId RdmaHw::GetTypeId(void)
+TypeId RdmaHw::GetTypeId (void)
 {
     static TypeId tid =
         TypeId("ns3::RdmaHw")
@@ -856,7 +856,6 @@ RdmaHw::ReceiveAck(Ptr<Packet> p, CustomHeader& ch)
 
     // ACK may advance the on-the-fly window, allowing more packets to send
     dev->TriggerTransmit();
-    // std:://cout << "ack triggere transmitted\n";
     return 0;
 }
 
@@ -1281,7 +1280,6 @@ RdmaHw::GetNxtPacket(Ptr<RdmaQueuePair> qp)
         }
         else
         {
-            // std::cout << "retransmit" << std::endl;
             std::get<2>(qp->pktsInflight[seqNum + payload_size]).Remove(); // cancel the timeout
             uint32_t backoff_exp = std::get<3>(qp->pktsInflight[seqNum + payload_size]);
             std::get<3>(qp->pktsInflight[seqNum + payload_size]) =
