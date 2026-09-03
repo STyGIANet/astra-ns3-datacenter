@@ -240,13 +240,9 @@ QbbHelper::Install (Ptr<Node> a, Ptr<Node> b)
 
   Ptr<QbbNetDevice> devA = m_deviceFactory.Create<QbbNetDevice> ();
   devA->SetAddress (Mac48Address::Allocate ());
-  // int nextHopNodeId = ns3::OpticalRoutingHelper::next_hop_node_ids[a->GetId()][ns3::OpticalRoutingHelper::stepId];
-  // devA->SetNextHopNodeId(nextHopNodeId);
   a->AddDevice (devA);
   Ptr<QbbNetDevice> devB = m_deviceFactory.Create<QbbNetDevice> ();
   devB->SetAddress (Mac48Address::Allocate ());
-  // nextHopNodeId = ns3::OpticalRoutingHelper::next_hop_node_ids[b->GetId()][ns3::OpticalRoutingHelper::stepId];
-  // devB->SetNextHopNodeId(nextHopNodeId);
   b->AddDevice (devB);
 
   Ptr<BEgressQueue> queueA = CreateObject<BEgressQueue> ();

@@ -17,11 +17,9 @@
 #include <ns3/udp-header.h>
 #include <ns3/optical-routing-helper.h>
 
-namespace ns3
-{
+namespace ns3{
 
-TypeId
-RdmaHw::GetTypeId(void)
+TypeId RdmaHw::GetTypeId(void)
 {
     static TypeId tid =
         TypeId("ns3::RdmaHw")
@@ -313,10 +311,6 @@ RdmaHw::GetNicIdxOfQp(bool receive, bool ackRoute, bool direction)
     else { // give me pcie interface port
         return 3;
     }
-    // TODO: Assume that you always have two NICs
-    // if (optical){
-    // 	return 1;
-    // }
 }
 
 uint64_t
@@ -527,7 +521,6 @@ RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader& ch)
     uint8_t ecnbits = ch.GetIpv4EcnBits();
 
     uint32_t payload_size = p->GetSize() - ch.GetSerializedSize();
-    // TODO find corresponding rx queue pair
     Ptr<RdmaRxQueuePair> rxQp =
         GetRxQp(ch.dip, ch.sip, ch.udp.dport, ch.udp.sport, ch.udp.pg, true);
     uint32_t nic_id;
@@ -636,8 +629,7 @@ RdmaHw::ReceiveUdp(Ptr<Packet> p, CustomHeader& ch)
             uint32_t srcId = copyTag.GetSrcId();
             copyTag.SetSrcId(copyTag.GetDestId());
             copyTag.SetDestId(srcId);
-            // uint32_t nodeId = QbbNetDevice::GetNextHopNodeId(copyTag.GetDestId(), 1);
-            uint32_t nextHopPortId = 1 + copyTag.GetDestId();  // todo: replace this logic with some pcie system...
+            uint32_t nextHopPortId = 1 + copyTag.GetDestId();
             copyTag.SetNextHopPortId(nextHopPortId);            
             newp->AddPacketTag(copyTag);
         }
@@ -895,7 +887,6 @@ RdmaHw::Receive(Ptr<Packet> p, CustomHeader& ch)
     }
     else
     {
-        // TODO: Is this packet destined for this node?
         // check rank with packet's m_des
         // if not destined, then transmit to switch on port 1 on this node
         // update routing tag to inform switch where to send next  routing tag should have porting num

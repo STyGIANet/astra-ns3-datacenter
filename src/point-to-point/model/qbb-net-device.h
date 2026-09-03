@@ -143,7 +143,6 @@ public:
    * Next Hop Resources
    */
   static uint32_t GetNextHopNodeId(int id, uint32_t direction);
-  // void SetNextHopNodeId(uint32_t id);
 
 protected:
 
@@ -216,9 +215,6 @@ public:
 	void UpdateNextAvail(Time t);
 
 	TracedCallback<Ptr<const Packet>, Ptr<RdmaQueuePair> > m_traceQpDequeue; // the trace for printing dequeue
-
-// private:
-//   uint32_t nextHopNodeId; 
 };
 
 } // namespace ns3
